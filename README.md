@@ -249,6 +249,14 @@ and further from:
 - elastic tethering
 - particle spring dynamics
 
+### Current iteration focus (March 2026)
+- replace particle-local oscillation with a shared evolving 3D flow field
+- increase inertia and drag so particles are advected by flow instead of snapping to per-particle targets
+- keep orb cohesion as a soft radial bias (large-scale shape guidance, not tethering)
+- map speech primarily to field energy/agitation and spark activity, with less direct positional displacement
+
+This update should move the feel toward **cosmic internal weather** and away from **dots in gelatin**.
+
 ## UX / Runtime Constraints
 
 ### Startup

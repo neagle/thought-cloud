@@ -12,7 +12,8 @@ export function StartOverlay({ onStart }: Props) {
         inset: 0,
         display: "grid",
         placeItems: "center",
-        background: "radial-gradient(circle at center, rgba(34, 72, 111, 0.22), rgba(0,0,0,0.96) 56%)",
+        background:
+          "radial-gradient(circle at center, rgba(34, 72, 111, 0.22), rgba(0,0,0,0.96) 56%)",
         zIndex: 20,
       }}
     >

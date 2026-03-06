@@ -7,12 +7,13 @@ export interface AudioSignals {
 }
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
-const lerp = (from: number, to: number, alpha: number) => from + (to - from) * alpha;
+const lerp = (from: number, to: number, alpha: number) =>
+  from + (to - from) * alpha;
 
 export class AudioAnalyzer {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
-  private dataArray: Uint8Array | null = null;
+  private dataArray: Uint8Array<ArrayBuffer> | null = null;
   private previousPresence = 0;
   private smoothedLevel = 0;
   private smoothedPresence = 0;
@@ -34,7 +35,10 @@ export class AudioAnalyzer {
       video: false,
     });
 
-    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AudioContextCtor =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AudioContextCtor) {
       throw new Error("Web Audio API is not available in this browser.");
     }
@@ -45,7 +49,9 @@ export class AudioAnalyzer {
     this.analyser.fftSize = 2048;
     this.analyser.smoothingTimeConstant = 0.68;
     source.connect(this.analyser);
-    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+    this.dataArray = new Uint8Array(
+      new ArrayBuffer(this.analyser.frequencyBinCount),
+    );
   }
 
   async resume() {
@@ -85,19 +91,32 @@ export class AudioAnalyzer {
     }
 
     const normalizedLevel = clamp01((fullEnergy / this.dataArray.length) * 2.1);
-    const normalizedPresence = clamp01((speechEnergy / this.dataArray.length) * 3.2);
-    const brightness = clamp01(highMidEnergy / Math.max(lowMidEnergy, 0.0001) / 2.2);
+    const normalizedPresence = clamp01(
+      (speechEnergy / this.dataArray.length) * 3.2,
+    );
+    const brightness = clamp01(
+      highMidEnergy / Math.max(lowMidEnergy, 0.0001) / 2.2,
+    );
 
     this.smoothedLevel = lerp(this.smoothedLevel, normalizedLevel, 0.18);
-    this.smoothedPresence = lerp(this.smoothedPresence, normalizedPresence, 0.22);
+    this.smoothedPresence = lerp(
+      this.smoothedPresence,
+      normalizedPresence,
+      0.22,
+    );
     this.smoothedBrightness = lerp(this.smoothedBrightness, brightness, 0.14);
 
-    const rawAttack = Math.max(0, this.smoothedPresence - this.previousPresence) * 5.5;
+    const rawAttack =
+      Math.max(0, this.smoothedPresence - this.previousPresence) * 5.5;
     this.previousPresence = this.smoothedPresence;
     const attack = clamp01(rawAttack);
 
     const speakingTarget = this.smoothedPresence > 0.06 ? 1 : 0;
-    this.smoothedSpeaking = lerp(this.smoothedSpeaking, speakingTarget, speakingTarget ? 0.2 : 0.05);
+    this.smoothedSpeaking = lerp(
+      this.smoothedSpeaking,
+      speakingTarget,
+      speakingTarget ? 0.2 : 0.05,
+    );
 
     return {
       level: this.smoothedLevel,

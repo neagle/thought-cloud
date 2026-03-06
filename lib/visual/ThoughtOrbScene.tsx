@@ -33,8 +33,19 @@ type Spark = {
   base: THREE.Vector3;
 };
 
+type FlowAnchor = {
+  base: THREE.Vector3;
+  current: THREE.Vector3;
+  velocity: THREE.Vector3;
+  axis: THREE.Vector3;
+  phase: number;
+  phase2: number;
+  radius: number;
+};
+
 const rand = THREE.MathUtils.randFloatSpread;
 const clamp = THREE.MathUtils.clamp;
+const MAX_PARTICLE_RADIUS = 3.2;
 
 function makeSpriteTexture(inner: string, outer: string) {
   const size = 256;
@@ -46,7 +57,14 @@ function makeSpriteTexture(inner: string, outer: string) {
     return new THREE.CanvasTexture(canvas);
   }
 
-  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  const gradient = ctx.createRadialGradient(
+    size / 2,
+    size / 2,
+    0,
+    size / 2,
+    size / 2,
+    size / 2,
+  );
   gradient.addColorStop(0, inner);
   gradient.addColorStop(0.28, inner);
   gradient.addColorStop(1, outer);
@@ -58,7 +76,16 @@ function makeSpriteTexture(inner: string, outer: string) {
   return texture;
 }
 
-export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initialControls }: Props) {
+function randomUnitVector() {
+  return new THREE.Vector3(rand(2), rand(2), rand(2)).normalize();
+}
+
+export function ThoughtOrbScene({
+  audioStarted,
+  panelOpen,
+  setPanelOpen,
+  initialControls,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<Controls>(initialControls);
   const audioRef = useRef<AudioAnalyzer | null>(null);
@@ -71,10 +98,19 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
 
     const container = containerRef.current;
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(
+      50,
+      container.clientWidth / container.clientHeight,
+      0.1,
+      100,
+    );
     camera.position.z = 7.2;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance",
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setClearColor(0x000000, 1);
@@ -83,9 +119,18 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
     const group = new THREE.Group();
     scene.add(group);
 
-    const haloTexture = makeSpriteTexture("rgba(158,240,255,0.9)", "rgba(158,240,255,0)");
-    const sparkTexture = makeSpriteTexture("rgba(255,210,255,1)", "rgba(255,210,255,0)");
-    const fieldTexture = makeSpriteTexture("rgba(140,220,255,0.85)", "rgba(140,220,255,0)");
+    const haloTexture = makeSpriteTexture(
+      "rgba(158,240,255,0.9)",
+      "rgba(158,240,255,0)",
+    );
+    const sparkTexture = makeSpriteTexture(
+      "rgba(255,210,255,1)",
+      "rgba(255,210,255,0)",
+    );
+    const fieldTexture = makeSpriteTexture(
+      "rgba(140,220,255,0.85)",
+      "rgba(140,220,255,0)",
+    );
 
     const particleCount = 1700;
     const positions = new Float32Array(particleCount * 3);
@@ -93,11 +138,37 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
     const seeds = new Float32Array(particleCount);
     const bases = new Float32Array(particleCount * 3);
     const velocities = new Float32Array(particleCount * 3);
+    const radii = new Float32Array(particleCount);
+
+    const flowAnchorCount = 18;
+    const flowAnchors: FlowAnchor[] = [];
+    const primaryAnchor = new Uint8Array(particleCount);
+    const secondaryAnchor = new Uint8Array(particleCount);
+    const anchorBlend = new Float32Array(particleCount);
 
     const colorA = new THREE.Color("#3645ff");
     const colorB = new THREE.Color("#54e0ff");
     const colorC = new THREE.Color("#b86fff");
     const mixed = new THREE.Color();
+    const tempVecA = new THREE.Vector3();
+    const tempVecB = new THREE.Vector3();
+    const tempVecC = new THREE.Vector3();
+    const tempVecD = new THREE.Vector3();
+
+    for (let i = 0; i < flowAnchorCount; i += 1) {
+      const base = randomUnitVector().multiplyScalar(
+        0.45 + Math.random() * 1.05,
+      );
+      flowAnchors.push({
+        base: base.clone(),
+        current: base.clone(),
+        velocity: new THREE.Vector3(),
+        axis: randomUnitVector(),
+        phase: Math.random() * Math.PI * 2,
+        phase2: Math.random() * Math.PI * 2,
+        radius: 0.85 + Math.random() * 0.7,
+      });
+    }
 
     for (let i = 0; i < particleCount; i += 1) {
       const r = Math.pow(Math.random(), 0.6) * 1.55;
@@ -113,17 +184,51 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
       bases[i * 3] = x;
       bases[i * 3 + 1] = y;
       bases[i * 3 + 2] = z;
+      radii[i] = r;
       seeds[i] = Math.random() * Math.PI * 2;
 
-      mixed.copy(colorA).lerp(colorB, Math.random()).lerp(colorC, Math.random() * 0.35);
+      mixed
+        .copy(colorA)
+        .lerp(colorB, Math.random())
+        .lerp(colorC, Math.random() * 0.35);
       colors[i * 3] = mixed.r;
       colors[i * 3 + 1] = mixed.g;
       colors[i * 3 + 2] = mixed.b;
+
+      let bestIndex = 0;
+      let secondIndex = 1;
+      let bestDistance = Infinity;
+      let secondDistance = Infinity;
+      tempVecA.set(x, y, z);
+      for (let j = 0; j < flowAnchors.length; j += 1) {
+        const distance = tempVecA.distanceToSquared(flowAnchors[j].base);
+        if (distance < bestDistance) {
+          secondDistance = bestDistance;
+          secondIndex = bestIndex;
+          bestDistance = distance;
+          bestIndex = j;
+        } else if (distance < secondDistance) {
+          secondDistance = distance;
+          secondIndex = j;
+        }
+      }
+
+      primaryAnchor[i] = bestIndex;
+      secondaryAnchor[i] = secondIndex;
+      const invA = 1 / (bestDistance + 0.0001);
+      const invB = 1 / (secondDistance + 0.0001);
+      anchorBlend[i] = invA / (invA + invB);
     }
 
     const particleGeometry = new THREE.BufferGeometry();
-    particleGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    particleGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    particleGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(positions, 3),
+    );
+    particleGeometry.setAttribute(
+      "color",
+      new THREE.BufferAttribute(colors, 3),
+    );
 
     const particleMaterial = new THREE.PointsMaterial({
       map: fieldTexture,
@@ -191,8 +296,14 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
       });
     }
     const sparkGeometry = new THREE.BufferGeometry();
-    sparkGeometry.setAttribute("position", new THREE.BufferAttribute(sparkPositions, 3));
-    sparkGeometry.setAttribute("color", new THREE.BufferAttribute(sparkColors, 3));
+    sparkGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(sparkPositions, 3),
+    );
+    sparkGeometry.setAttribute(
+      "color",
+      new THREE.BufferAttribute(sparkColors, 3),
+    );
     const sparkMaterial = new THREE.PointsMaterial({
       map: sparkTexture,
       size: 0.18,
@@ -217,11 +328,57 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
       for (let i = 0; i < usable; i += 1) {
         const spark = sparks[i];
         if (spark.life > 0.05) continue;
-        const origin = new THREE.Vector3(rand(1.3), rand(1.3), rand(1.3)).normalize().multiplyScalar(0.6 + Math.random() * 0.9);
+        const origin = new THREE.Vector3(rand(1.3), rand(1.3), rand(1.3))
+          .normalize()
+          .multiplyScalar(0.6 + Math.random() * 0.9);
         spark.base.copy(origin);
-        spark.velocity.copy(origin).normalize().multiplyScalar(0.012 + intensity * 0.03).add(new THREE.Vector3(rand(0.008), rand(0.008), rand(0.008)));
+        spark.velocity
+          .copy(origin)
+          .normalize()
+          .multiplyScalar(0.012 + intensity * 0.03)
+          .add(new THREE.Vector3(rand(0.008), rand(0.008), rand(0.008)));
         spark.life = 0.7 + Math.random() * 0.5;
         spark.decay = 0.012 + Math.random() * 0.016;
+      }
+    }
+
+    function updateFlowAnchors(
+      elapsed: number,
+      agitation: number,
+      speechEnergy: number,
+    ) {
+      const fieldStrength = 0.16 + agitation * 0.12 + speechEnergy * 0.08;
+      for (let i = 0; i < flowAnchors.length; i += 1) {
+        const anchor = flowAnchors[i];
+        const wobble = 0.12 + speechEnergy * 0.05;
+        anchor.current.set(
+          anchor.base.x +
+            Math.sin(elapsed * 0.08 + anchor.phase) * wobble +
+            Math.cos(elapsed * 0.045 + anchor.phase2) * 0.04,
+          anchor.base.y +
+            Math.cos(elapsed * 0.075 + anchor.phase2) * wobble * 0.92 +
+            Math.sin(elapsed * 0.04 + anchor.phase) * 0.03,
+          anchor.base.z +
+            Math.sin(elapsed * 0.06 + anchor.phase * 0.7) * wobble * 0.85,
+        );
+
+        tempVecA.copy(anchor.current).normalize();
+        tempVecB.copy(anchor.axis).cross(tempVecA).normalize();
+        if (tempVecB.lengthSq() < 0.0001) {
+          tempVecB.set(0, 1, 0).cross(tempVecA).normalize();
+        }
+        tempVecC.copy(tempVecA).cross(tempVecB).normalize();
+
+        anchor.velocity
+          .copy(tempVecB)
+          .multiplyScalar(
+            Math.sin(elapsed * 0.11 + anchor.phase) * fieldStrength,
+          )
+          .addScaledVector(
+            tempVecC,
+            Math.cos(elapsed * 0.09 + anchor.phase2) * fieldStrength * 0.8,
+          )
+          .multiplyScalar(0.0065);
       }
     }
 
@@ -239,67 +396,208 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
       };
 
       const speechEnergy = clamp(signals.presence * controls.speechBias, 0, 1);
-      const agitation = controls.idleDrift + speechEnergy * controls.agitationGain + signals.attack * 1.1;
-      const pulse = 1 + speechEnergy * 0.11 + signals.attack * 0.06;
-      const haloPulse = 1 + speechEnergy * 0.12 + signals.brightness * 0.08;
-      const thoughtBias = signals.speaking * 0.11 + signals.attack * 0.1;
-      const flowDamping = 0.82 + controls.flowSmoothing * 0.16;
-      const followStrength = 0.055 + (1 - controls.flowSmoothing) * 0.1;
+      const responseEnergy = clamp(
+        Math.pow(speechEnergy, 0.72) * 1.15 +
+          signals.attack * 0.62 +
+          signals.level * 0.24,
+        0,
+        1,
+      );
+      const agitation =
+        controls.idleDrift +
+        responseEnergy * controls.agitationGain +
+        signals.attack * 1.2;
+      const pulse = 1 + responseEnergy * 0.09 + signals.attack * 0.05;
+      const haloPulse = 1 + responseEnergy * 0.16 + signals.brightness * 0.1;
+      const thoughtBias = signals.speaking * 0.1 + signals.attack * 0.08;
+      const damping = clamp(
+        0.925 + controls.flowSmoothing * 0.055 - responseEnergy * 0.06,
+        0.84,
+        0.985,
+      );
+      const fieldScale =
+        (0.62 + controls.masterIntensity * 0.76) *
+        (0.68 + agitation * 0.82 + responseEnergy * 0.42);
+      const cohesionStrength =
+        (0.0014 + controls.cohesion * 0.002) * (1 + speechEnergy * 0.22);
+      const centerBiasStrength = 0.00065 + controls.cohesion * 0.00065;
+      const shellBreathing = 1 + speechEnergy * 0.05;
+      const sparkiness = 0.55 + responseEnergy * 0.85 + signals.attack * 0.4;
 
-      const positionAttr = particleGeometry.getAttribute("position") as THREE.BufferAttribute;
+      updateFlowAnchors(elapsed, agitation, speechEnergy);
+
+      const positionAttr = particleGeometry.getAttribute(
+        "position",
+      ) as THREE.BufferAttribute;
 
       for (let i = 0; i < particleCount; i += 1) {
         const ix = i * 3;
-        const baseX = bases[ix];
-        const baseY = bases[ix + 1];
-        const baseZ = bases[ix + 2];
         const seed = seeds[i];
+        const blend = anchorBlend[i];
+        const anchorA = flowAnchors[primaryAnchor[i]];
+        const anchorB = flowAnchors[secondaryAnchor[i]];
 
-        const wave1 = elapsed * (0.07 + agitation * 0.08) + seed;
-        const wave2 = elapsed * (0.045 + agitation * 0.06) + seed * 1.7;
-        const wave3 = elapsed * (0.03 + agitation * 0.045) + seed * 0.73;
+        tempVecA.set(positions[ix], positions[ix + 1], positions[ix + 2]);
+        tempVecB.set(bases[ix], bases[ix + 1], bases[ix + 2]);
 
-        const swirlX = Math.sin(wave1 + baseY * 0.9) * 0.12 + Math.cos(wave2 + baseZ * 0.7) * 0.08;
-        const swirlY = Math.cos(wave2 + baseX * 0.85) * 0.11 + Math.sin(wave3 + baseZ * 0.65) * 0.07;
-        const swirlZ = Math.sin(wave3 + baseX * 0.75) * 0.1 + Math.cos(wave1 + baseY * 0.6) * 0.06;
+        const radius = tempVecA.length() || 0.0001;
+        const baseRadius = radii[i] * shellBreathing;
+        const radiusError = baseRadius - radius;
 
-        const targetX = baseX * pulse * controls.cohesion + swirlX * controls.masterIntensity;
-        const targetY = baseY * pulse * controls.cohesion + swirlY * controls.masterIntensity;
-        const targetZ = baseZ * pulse * controls.cohesion + swirlZ * controls.masterIntensity + thoughtBias * Math.sin(seed * 0.7 + elapsed * 0.22) * 0.12;
+        tempVecC
+          .copy(anchorA.velocity)
+          .multiplyScalar(blend)
+          .addScaledVector(anchorB.velocity, 1 - blend);
 
-        velocities[ix] = velocities[ix] * flowDamping + (targetX - positions[ix]) * followStrength;
-        velocities[ix + 1] = velocities[ix + 1] * flowDamping + (targetY - positions[ix + 1]) * followStrength;
-        velocities[ix + 2] = velocities[ix + 2] * flowDamping + (targetZ - positions[ix + 2]) * followStrength;
+        tempVecD
+          .copy(anchorA.current)
+          .multiplyScalar(blend)
+          .addScaledVector(anchorB.current, 1 - blend)
+          .sub(tempVecA);
 
-        positions[ix] += velocities[ix];
-        positions[ix + 1] += velocities[ix + 1];
-        positions[ix + 2] += velocities[ix + 2];
+        const locality = clamp(1 - tempVecD.length() / 2.6, 0.18, 1);
+
+        const tangentA = tempVecA
+          .clone()
+          .cross(anchorA.axis)
+          .normalize()
+          .multiplyScalar(blend);
+        const tangentB = tempVecB
+          .clone()
+          .cross(anchorB.axis)
+          .normalize()
+          .multiplyScalar(1 - blend);
+        const tangential = tangentA
+          .add(tangentB)
+          .multiplyScalar((0.0007 + thoughtBias * 0.001) * locality);
+
+        const thoughtWave =
+          Math.sin(
+            elapsed * 0.12 + seed * 1.3 + tempVecB.x * 0.4 + tempVecB.z * 0.35,
+          ) * 0.00075;
+        const thoughtDrift = tempVecB
+          .clone()
+          .normalize()
+          .multiplyScalar(thoughtWave * (0.35 + signals.speaking * 0.85));
+        const centerBias = tempVecA
+          .clone()
+          .normalize()
+          .multiplyScalar(-centerBiasStrength * Math.max(0, radius - 1.95));
+        const shellForce = tempVecA
+          .clone()
+          .normalize()
+          .multiplyScalar(radiusError * cohesionStrength);
+
+        velocities[ix] =
+          velocities[ix] * damping +
+          (tempVecC.x * fieldScale * locality +
+            tangential.x +
+            thoughtDrift.x +
+            shellForce.x +
+            centerBias.x);
+        velocities[ix + 1] =
+          velocities[ix + 1] * damping +
+          (tempVecC.y * fieldScale * locality +
+            tangential.y +
+            thoughtDrift.y +
+            shellForce.y +
+            centerBias.y);
+        velocities[ix + 2] =
+          velocities[ix + 2] * damping +
+          (tempVecC.z * fieldScale * locality +
+            tangential.z +
+            thoughtDrift.z +
+            shellForce.z +
+            centerBias.z);
+
+        positions[ix] += velocities[ix] * (0.95 + sparkiness * 0.02);
+        positions[ix + 1] += velocities[ix + 1] * (0.95 + sparkiness * 0.02);
+        positions[ix + 2] += velocities[ix + 2] * (0.95 + sparkiness * 0.02);
+
+        const postRadius = Math.hypot(
+          positions[ix],
+          positions[ix + 1],
+          positions[ix + 2],
+        );
+        if (postRadius > MAX_PARTICLE_RADIUS) {
+          const recovery = clamp(
+            (postRadius - MAX_PARTICLE_RADIUS) / 1.2,
+            0.15,
+            0.65,
+          );
+          positions[ix] = THREE.MathUtils.lerp(
+            positions[ix],
+            bases[ix],
+            recovery,
+          );
+          positions[ix + 1] = THREE.MathUtils.lerp(
+            positions[ix + 1],
+            bases[ix + 1],
+            recovery,
+          );
+          positions[ix + 2] = THREE.MathUtils.lerp(
+            positions[ix + 2],
+            bases[ix + 2],
+            recovery,
+          );
+          velocities[ix] *= 0.55;
+          velocities[ix + 1] *= 0.55;
+          velocities[ix + 2] *= 0.55;
+        }
       }
 
       positionAttr.needsUpdate = true;
 
-      group.rotation.y += delta * controls.rotationDrift * (0.6 + speechEnergy * 0.45);
-      group.rotation.x = Math.sin(elapsed * 0.05) * 0.05;
-      group.rotation.z = Math.cos(elapsed * 0.04) * 0.035;
+      group.rotation.y +=
+        delta * controls.rotationDrift * (0.35 + speechEnergy * 0.25);
+      group.rotation.x = Math.sin(elapsed * 0.05) * 0.04;
+      group.rotation.z = Math.cos(elapsed * 0.04) * 0.03;
 
       const hueShift = (elapsed * 0.012) % 1;
-      haloMaterial.color.setHSL(0.56 + Math.sin(hueShift * Math.PI * 2) * 0.03, 0.85, 0.62);
-      outerHaloMaterial.color.setHSL(0.72 + Math.cos(hueShift * Math.PI * 2) * 0.03, 0.75, 0.58);
-      coreMaterial.color.setHSL(0.53 + Math.sin(hueShift * Math.PI * 2 + 0.7) * 0.02, 0.65, 0.82);
+      haloMaterial.color.setHSL(
+        0.56 + Math.sin(hueShift * Math.PI * 2) * 0.03,
+        0.85,
+        0.62,
+      );
+      outerHaloMaterial.color.setHSL(
+        0.72 + Math.cos(hueShift * Math.PI * 2) * 0.03,
+        0.75,
+        0.58,
+      );
+      coreMaterial.color.setHSL(
+        0.53 + Math.sin(hueShift * Math.PI * 2 + 0.7) * 0.02,
+        0.65,
+        0.82,
+      );
 
-      haloMaterial.opacity = (0.2 + speechEnergy * 0.26 + signals.brightness * 0.1) * controls.haloStrength;
-      outerHaloMaterial.opacity = 0.12 + speechEnergy * 0.08;
-      coreMaterial.opacity = (0.28 + speechEnergy * 0.35 + signals.attack * 0.12) * controls.coreStrength;
+      haloMaterial.opacity =
+        (0.2 + responseEnergy * 0.32 + signals.brightness * 0.1) *
+        controls.haloStrength;
+      outerHaloMaterial.opacity = 0.11 + responseEnergy * 0.1;
+      coreMaterial.opacity =
+        (0.26 + responseEnergy * 0.42 + signals.attack * 0.16) *
+        controls.coreStrength;
 
       halo.scale.setScalar(7.6 * haloPulse * (1 + controls.bloomBias * 0.08));
-      outerHalo.scale.setScalar(10.3 * (1 + speechEnergy * 0.05));
-      core.scale.setScalar(2.3 + speechEnergy * 0.75 + signals.attack * 0.22);
+      outerHalo.scale.setScalar(10.3 * (1 + responseEnergy * 0.07));
+      core.scale.setScalar(2.3 + responseEnergy * 0.9 + signals.attack * 0.24);
 
-      if (signals.attack > controls.sparkThreshold) {
-        spawnSparks(Math.round(controls.sparkBurstSize + signals.attack * 14), signals.attack);
+      const dynamicSparkThreshold = Math.max(
+        0.02,
+        controls.sparkThreshold - responseEnergy * 0.06,
+      );
+      if (signals.attack > dynamicSparkThreshold) {
+        spawnSparks(
+          Math.round(
+            controls.sparkBurstSize + signals.attack * 12 + responseEnergy * 7,
+          ),
+          clamp(signals.attack * 1.12 + responseEnergy * 0.58, 0, 1),
+        );
       }
 
-      const sparkPositionAttr = sparkGeometry.getAttribute("position") as THREE.BufferAttribute;
+      const sparkPositionAttr = sparkGeometry.getAttribute(
+        "position",
+      ) as THREE.BufferAttribute;
       for (let i = 0; i < sparks.length; i += 1) {
         const spark = sparks[i];
         const ix = i * 3;
@@ -357,7 +655,8 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
     const analyzer = new AudioAnalyzer();
     audioRef.current = analyzer;
     analyzer.start().catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : "Could not start audio input.";
+      const message =
+        err instanceof Error ? err.message : "Could not start audio input.";
       setError(message);
       startedRef.current = false;
     });
@@ -403,47 +702,159 @@ export function ThoughtOrbScene({ audioStarted, panelOpen, setPanelOpen, initial
             boxShadow: "0 0 28px rgba(0,0,0,0.32)",
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, letterSpacing: "0.03em", textTransform: "uppercase" }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              marginBottom: 10,
+              letterSpacing: "0.03em",
+              textTransform: "uppercase",
+            }}
+          >
             Thought Cloud Tuning
           </div>
-          <Control label="Master intensity" min={0.3} max={2} step={0.01} value={controlsRef.current.masterIntensity} onChange={(v) => {
-            controlsRef.current.masterIntensity = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Idle drift" min={0} max={1.2} step={0.01} value={controlsRef.current.idleDrift} onChange={(v) => {
-            controlsRef.current.idleDrift = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Agitation gain" min={0.1} max={2.5} step={0.01} value={controlsRef.current.agitationGain} onChange={(v) => {
-            controlsRef.current.agitationGain = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Speech bias" min={0.4} max={2} step={0.01} value={controlsRef.current.speechBias} onChange={(v) => {
-            controlsRef.current.speechBias = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Flow smoothing" min={0.2} max={1} step={0.01} value={controlsRef.current.flowSmoothing} onChange={(v) => {
-            controlsRef.current.flowSmoothing = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Orb cohesion" min={0.45} max={1.05} step={0.01} value={controlsRef.current.cohesion} onChange={(v) => {
-            controlsRef.current.cohesion = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Spark threshold" min={0.01} max={0.5} step={0.005} value={controlsRef.current.sparkThreshold} onChange={(v) => {
-            controlsRef.current.sparkThreshold = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Spark burst size" min={1} max={18} step={1} value={controlsRef.current.sparkBurstSize} onChange={(v) => {
-            controlsRef.current.sparkBurstSize = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Halo strength" min={0.2} max={2} step={0.01} value={controlsRef.current.haloStrength} onChange={(v) => {
-            controlsRef.current.haloStrength = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Core strength" min={0.2} max={2} step={0.01} value={controlsRef.current.coreStrength} onChange={(v) => {
-            controlsRef.current.coreStrength = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Bloom bias" min={0} max={1.5} step={0.01} value={controlsRef.current.bloomBias} onChange={(v) => {
-            controlsRef.current.bloomBias = v; forceRender((n) => n + 1);
-          }} />
-          <Control label="Rotation drift" min={0} max={0.3} step={0.005} value={controlsRef.current.rotationDrift} onChange={(v) => {
-            controlsRef.current.rotationDrift = v; forceRender((n) => n + 1);
-          }} />
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, lineHeight: 1.4 }}>
-            This pass smooths the field into slower, more orbital motion. Try increasing Flow smoothing and lowering Agitation gain if you want it even more cosmic.
+          <Control
+            label="Master intensity"
+            min={0.3}
+            max={2}
+            step={0.01}
+            value={controlsRef.current.masterIntensity}
+            onChange={(v) => {
+              controlsRef.current.masterIntensity = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Idle drift"
+            min={0}
+            max={1.2}
+            step={0.01}
+            value={controlsRef.current.idleDrift}
+            onChange={(v) => {
+              controlsRef.current.idleDrift = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Agitation gain"
+            min={0.1}
+            max={2.5}
+            step={0.01}
+            value={controlsRef.current.agitationGain}
+            onChange={(v) => {
+              controlsRef.current.agitationGain = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Speech bias"
+            min={0.4}
+            max={2}
+            step={0.01}
+            value={controlsRef.current.speechBias}
+            onChange={(v) => {
+              controlsRef.current.speechBias = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Flow smoothing"
+            min={0.2}
+            max={1}
+            step={0.01}
+            value={controlsRef.current.flowSmoothing}
+            onChange={(v) => {
+              controlsRef.current.flowSmoothing = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Orb cohesion"
+            min={0.45}
+            max={1.05}
+            step={0.01}
+            value={controlsRef.current.cohesion}
+            onChange={(v) => {
+              controlsRef.current.cohesion = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Spark threshold"
+            min={0.01}
+            max={0.5}
+            step={0.005}
+            value={controlsRef.current.sparkThreshold}
+            onChange={(v) => {
+              controlsRef.current.sparkThreshold = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Spark burst size"
+            min={1}
+            max={18}
+            step={1}
+            value={controlsRef.current.sparkBurstSize}
+            onChange={(v) => {
+              controlsRef.current.sparkBurstSize = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Halo strength"
+            min={0.2}
+            max={2}
+            step={0.01}
+            value={controlsRef.current.haloStrength}
+            onChange={(v) => {
+              controlsRef.current.haloStrength = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Core strength"
+            min={0.2}
+            max={2}
+            step={0.01}
+            value={controlsRef.current.coreStrength}
+            onChange={(v) => {
+              controlsRef.current.coreStrength = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Bloom bias"
+            min={0}
+            max={1.5}
+            step={0.01}
+            value={controlsRef.current.bloomBias}
+            onChange={(v) => {
+              controlsRef.current.bloomBias = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Rotation drift"
+            min={0}
+            max={0.3}
+            step={0.005}
+            value={controlsRef.current.rotationDrift}
+            onChange={(v) => {
+              controlsRef.current.rotationDrift = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 12,
+              opacity: 0.75,
+              lineHeight: 1.4,
+            }}
+          >
+            This pass replaces springier particle following with shared, slow
+            flow anchors so nearby regions drift together like internal weather.
           </div>
         </div>
       ) : null}
@@ -483,7 +894,15 @@ interface ControlProps {
 function Control({ label, min, max, step, value, onChange }: ControlProps) {
   return (
     <label style={{ display: "block", marginBottom: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, marginBottom: 4 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          fontSize: 12,
+          marginBottom: 4,
+        }}
+      >
         <span>{label}</span>
         <span style={{ opacity: 0.75 }}>{value.toFixed(step < 1 ? 2 : 0)}</span>
       </div>

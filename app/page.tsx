@@ -10,26 +10,40 @@ export default function Page() {
 
   const initialControls = useMemo(
     () => ({
-      masterIntensity: 1,
-      idleDrift: 0.24,
-      agitationGain: 0.8,
-      sparkThreshold: 0.12,
+      masterIntensity: 1.3,
+      idleDrift: 0.49,
+      agitationGain: 1.55,
+      sparkThreshold: 0.1,
       sparkBurstSize: 7,
-      haloStrength: 1,
+      haloStrength: 0.33,
       coreStrength: 1,
       bloomBias: 0.65,
-      rotationDrift: 0.035,
-      speechBias: 1.1,
-      flowSmoothing: 0.9,
-      cohesion: 0.72,
+      rotationDrift: 0.26,
+      speechBias: 1.45,
+      flowSmoothing: 0.97,
+      cohesion: 0.78,
     }),
     [],
   );
 
   return (
-    <main style={{ width: "100vw", height: "100vh", position: "relative", background: "#000" }}>
-      <ThoughtOrbScene audioStarted={audioStarted} panelOpen={panelOpen} setPanelOpen={setPanelOpen} initialControls={initialControls} />
-      {!audioStarted ? <StartOverlay onStart={() => setAudioStarted(true)} /> : null}
+    <main
+      style={{
+        width: "100vw",
+        height: "100vh",
+        position: "relative",
+        background: "#000",
+      }}
+    >
+      <ThoughtOrbScene
+        audioStarted={audioStarted}
+        panelOpen={panelOpen}
+        setPanelOpen={setPanelOpen}
+        initialControls={initialControls}
+      />
+      {!audioStarted ? (
+        <StartOverlay onStart={() => setAudioStarted(true)} />
+      ) : null}
     </main>
   );
 }
