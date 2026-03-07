@@ -45,7 +45,7 @@ type FlowAnchor = {
 
 const rand = THREE.MathUtils.randFloatSpread;
 const clamp = THREE.MathUtils.clamp;
-const MAX_PARTICLE_RADIUS = 3.2;
+const BASE_MAX_PARTICLE_RADIUS = 2.75;
 
 function makeSpriteTexture(inner: string, outer: string) {
   const size = 256;
@@ -419,10 +419,15 @@ export function ThoughtOrbScene({
         (0.62 + controls.masterIntensity * 0.76) *
         (0.68 + agitation * 0.82 + responseEnergy * 0.42);
       const cohesionStrength =
-        (0.0014 + controls.cohesion * 0.002) * (1 + speechEnergy * 0.22);
-      const centerBiasStrength = 0.00065 + controls.cohesion * 0.00065;
-      const shellBreathing = 1 + speechEnergy * 0.05;
+        (0.0015 + controls.cohesion * 0.0024) * (1.35 - responseEnergy * 0.62);
+      const centerBiasStrength =
+        (0.00085 + controls.cohesion * 0.00085) * (1.2 - responseEnergy * 0.5);
+      const centerBiasRadius = 1.55 + responseEnergy * 0.95;
+      const shellBreathing = 1 + responseEnergy * 0.2 + signals.attack * 0.08;
       const sparkiness = 0.55 + responseEnergy * 0.85 + signals.attack * 0.4;
+      const expansionKick = responseEnergy * 0.0018 + signals.attack * 0.0011;
+      const dynamicMaxRadius =
+        BASE_MAX_PARTICLE_RADIUS + responseEnergy * 1.45 + signals.attack * 0.7;
 
       updateFlowAnchors(elapsed, agitation, speechEnergy);
 
@@ -482,11 +487,17 @@ export function ThoughtOrbScene({
         const centerBias = tempVecA
           .clone()
           .normalize()
-          .multiplyScalar(-centerBiasStrength * Math.max(0, radius - 1.95));
+          .multiplyScalar(
+            -centerBiasStrength * Math.max(0, radius - centerBiasRadius),
+          );
         const shellForce = tempVecA
           .clone()
           .normalize()
           .multiplyScalar(radiusError * cohesionStrength);
+        const expansionForce = tempVecB
+          .clone()
+          .normalize()
+          .multiplyScalar(expansionKick * locality);
 
         velocities[ix] =
           velocities[ix] * damping +
@@ -494,21 +505,24 @@ export function ThoughtOrbScene({
             tangential.x +
             thoughtDrift.x +
             shellForce.x +
-            centerBias.x);
+            centerBias.x +
+            expansionForce.x);
         velocities[ix + 1] =
           velocities[ix + 1] * damping +
           (tempVecC.y * fieldScale * locality +
             tangential.y +
             thoughtDrift.y +
             shellForce.y +
-            centerBias.y);
+            centerBias.y +
+            expansionForce.y);
         velocities[ix + 2] =
           velocities[ix + 2] * damping +
           (tempVecC.z * fieldScale * locality +
             tangential.z +
             thoughtDrift.z +
             shellForce.z +
-            centerBias.z);
+            centerBias.z +
+            expansionForce.z);
 
         positions[ix] += velocities[ix] * (0.95 + sparkiness * 0.02);
         positions[ix + 1] += velocities[ix + 1] * (0.95 + sparkiness * 0.02);
@@ -519,9 +533,9 @@ export function ThoughtOrbScene({
           positions[ix + 1],
           positions[ix + 2],
         );
-        if (postRadius > MAX_PARTICLE_RADIUS) {
+        if (postRadius > dynamicMaxRadius) {
           const recovery = clamp(
-            (postRadius - MAX_PARTICLE_RADIUS) / 1.2,
+            (postRadius - dynamicMaxRadius) / 1.25,
             0.15,
             0.65,
           );

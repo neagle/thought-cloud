@@ -11,8 +11,8 @@ export default function Page() {
   const initialControls = useMemo(
     () => ({
       masterIntensity: 1.3,
-      idleDrift: 0.49,
-      agitationGain: 1.55,
+      idleDrift: 0.2,
+      agitationGain: 1.75,
       sparkThreshold: 0.1,
       sparkBurstSize: 7,
       haloStrength: 0.33,
@@ -21,7 +21,7 @@ export default function Page() {
       rotationDrift: 0.26,
       speechBias: 1.45,
       flowSmoothing: 0.97,
-      cohesion: 0.78,
+      cohesion: 0.84,
     }),
     [],
   );
