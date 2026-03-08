@@ -22,6 +22,7 @@ type Controls = {
   highlightHue: number;
   hueDrift: number;
   speechColorBoost: number;
+  sustainBackoff: number;
 };
 
 interface Props {
@@ -55,6 +56,7 @@ type MonitorSignalKey =
   | "brightness"
   | "speaking"
   | "response"
+  | "adaptive"
   | "agitation";
 
 const MONITOR_SERIES: Array<{
@@ -68,6 +70,7 @@ const MONITOR_SERIES: Array<{
   { key: "brightness", label: "Brightness", color: "#ffd56b" },
   { key: "speaking", label: "Speaking", color: "#b5a5ff" },
   { key: "response", label: "Response", color: "#ffffff" },
+  { key: "adaptive", label: "Adaptive", color: "#8fffd0" },
   { key: "agitation", label: "Agitation", color: "#ff9f66" },
 ];
 
@@ -82,6 +85,7 @@ function makeMonitorHistory(): Record<MonitorSignalKey, number[]> {
     brightness: [...base],
     speaking: [...base],
     response: [...base],
+    adaptive: [...base],
     agitation: [...base],
   };
 }
@@ -105,6 +109,39 @@ const BASE_MAX_PARTICLE_RADIUS = 2.75;
 function wrapHue(value: number) {
   return THREE.MathUtils.euclideanModulo(value, 1);
 }
+
+const COLOR_PRESETS = [
+  {
+    name: "Calm Indigo",
+    values: {
+      baseHue: 0.56,
+      accentHue: 0.72,
+      highlightHue: 0.1,
+      hueDrift: 0.018,
+      speechColorBoost: 1,
+    },
+  },
+  {
+    name: "Thoughtflare Violet",
+    values: {
+      baseHue: 0.63,
+      accentHue: 0.8,
+      highlightHue: 0.06,
+      hueDrift: 0.024,
+      speechColorBoost: 1.28,
+    },
+  },
+  {
+    name: "Warm Recognition",
+    values: {
+      baseHue: 0.53,
+      accentHue: 0.68,
+      highlightHue: 0.12,
+      hueDrift: 0.021,
+      speechColorBoost: 1.36,
+    },
+  },
+] as const;
 
 function makeSpriteTexture(inner: string, outer: string) {
   const size = 256;
@@ -159,6 +196,7 @@ export function ThoughtOrbScene({
     brightness: 0,
     speaking: 0,
     response: 0,
+    adaptive: 0,
     agitation: 0,
   });
   const [error, setError] = useState<string | null>(null);
@@ -457,6 +495,8 @@ export function ThoughtOrbScene({
 
     const clock = new THREE.Clock();
     let frameId = 0;
+    let sustainedAccumulator = 0;
+    let previousResponseEnergy = 0;
 
     function spawnSparks(amount: number, intensity: number) {
       const usable = Math.min(amount, sparks.length);
@@ -538,31 +578,52 @@ export function ThoughtOrbScene({
         0,
         1,
       );
+
+      const responseDelta = Math.abs(responseEnergy - previousResponseEnergy);
+      previousResponseEnergy = responseEnergy;
+      const novelty = clamp(signals.attack * 1.25 + responseDelta * 5.2, 0, 1);
+      const sustainedPortion = clamp(responseEnergy - novelty * 0.9, 0, 1);
+      sustainedAccumulator = THREE.MathUtils.lerp(
+        sustainedAccumulator,
+        sustainedPortion,
+        0.06 + controls.sustainBackoff * 0.22,
+      );
+      const adaptation = sustainedAccumulator * controls.sustainBackoff;
+      const adaptiveResponse = clamp(
+        responseEnergy * (1 - adaptation * 0.76) + novelty * 0.34,
+        0,
+        1,
+      );
+
       const agitation =
         controls.idleDrift +
-        responseEnergy * controls.agitationGain +
+        adaptiveResponse * controls.agitationGain +
         signals.attack * 1.2;
-      const pulse = 1 + responseEnergy * 0.09 + signals.attack * 0.05;
-      const haloPulse = 1 + responseEnergy * 0.16 + signals.brightness * 0.1;
+      const pulse = 1 + adaptiveResponse * 0.09 + signals.attack * 0.05;
+      const haloPulse = 1 + adaptiveResponse * 0.16 + signals.brightness * 0.1;
       const thoughtBias = signals.speaking * 0.1 + signals.attack * 0.08;
       const damping = clamp(
-        0.925 + controls.flowSmoothing * 0.055 - responseEnergy * 0.06,
+        0.925 + controls.flowSmoothing * 0.055 - adaptiveResponse * 0.06,
         0.84,
         0.985,
       );
       const fieldScale =
         (0.62 + controls.masterIntensity * 0.76) *
-        (0.68 + agitation * 0.82 + responseEnergy * 0.42);
+        (0.68 + agitation * 0.82 + adaptiveResponse * 0.42);
       const cohesionStrength =
-        (0.0015 + controls.cohesion * 0.0024) * (1.35 - responseEnergy * 0.62);
+        (0.0015 + controls.cohesion * 0.0024) *
+        (1.35 - adaptiveResponse * 0.62);
       const centerBiasStrength =
-        (0.00085 + controls.cohesion * 0.00085) * (1.2 - responseEnergy * 0.5);
-      const centerBiasRadius = 1.55 + responseEnergy * 0.95;
-      const shellBreathing = 1 + responseEnergy * 0.2 + signals.attack * 0.08;
-      const sparkiness = 0.55 + responseEnergy * 0.85 + signals.attack * 0.4;
-      const expansionKick = responseEnergy * 0.0018 + signals.attack * 0.0011;
+        (0.00085 + controls.cohesion * 0.00085) *
+        (1.2 - adaptiveResponse * 0.5);
+      const centerBiasRadius = 1.55 + adaptiveResponse * 0.95;
+      const shellBreathing = 1 + adaptiveResponse * 0.2 + signals.attack * 0.08;
+      const sparkiness = 0.55 + adaptiveResponse * 0.85 + signals.attack * 0.4;
+      const expansionKick = adaptiveResponse * 0.0018 + signals.attack * 0.0011;
       const dynamicMaxRadius =
-        BASE_MAX_PARTICLE_RADIUS + responseEnergy * 1.45 + signals.attack * 0.7;
+        BASE_MAX_PARTICLE_RADIUS +
+        adaptiveResponse * 1.45 +
+        signals.attack * 0.7;
 
       monitorSignalsRef.current.level = signals.level;
       monitorSignalsRef.current.presence = signals.presence;
@@ -570,6 +631,7 @@ export function ThoughtOrbScene({
       monitorSignalsRef.current.brightness = signals.brightness;
       monitorSignalsRef.current.speaking = signals.speaking;
       monitorSignalsRef.current.response = responseEnergy;
+      monitorSignalsRef.current.adaptive = adaptiveResponse;
       monitorSignalsRef.current.agitation = clamp(agitation / 2.7, 0, 1);
 
       const monitorHistory = monitorHistoryRef.current;
@@ -579,6 +641,7 @@ export function ThoughtOrbScene({
       pushMonitorSample(monitorHistory, "brightness", signals.brightness);
       pushMonitorSample(monitorHistory, "speaking", signals.speaking);
       pushMonitorSample(monitorHistory, "response", responseEnergy);
+      pushMonitorSample(monitorHistory, "adaptive", adaptiveResponse);
       pushMonitorSample(monitorHistory, "agitation", agitation / 2.7);
 
       updateFlowAnchors(elapsed, agitation, speechEnergy);
@@ -720,52 +783,108 @@ export function ThoughtOrbScene({
       group.rotation.z = Math.cos(elapsed * 0.04) * 0.03;
 
       const hueTime = elapsed * controls.hueDrift;
-      const hueSway = Math.sin(hueTime) * 0.024 + Math.cos(hueTime * 0.57) * 0.012;
-      const colorResponse = clamp(responseEnergy * controls.speechColorBoost, 0, 1);
+      const hueSway =
+        Math.sin(hueTime) * 0.024 + Math.cos(hueTime * 0.57) * 0.012;
+      const colorResponse = clamp(
+        responseEnergy * controls.speechColorBoost,
+        0,
+        1,
+      );
       const eruption = clamp(signals.attack * 1.2 + colorResponse * 0.35, 0, 1);
       const warmShift = THREE.MathUtils.lerp(0, 0.085, eruption);
 
-      const haloHue = wrapHue(controls.baseHue + hueSway + colorResponse * 0.012 + warmShift * 0.35);
-      const outerHue = wrapHue(controls.accentHue - hueSway * 0.7 + colorResponse * 0.018 + warmShift * 0.6);
+      const haloHue = wrapHue(
+        controls.baseHue + hueSway + colorResponse * 0.012 + warmShift * 0.35,
+      );
+      const outerHue = wrapHue(
+        controls.accentHue -
+          hueSway * 0.7 +
+          colorResponse * 0.018 +
+          warmShift * 0.6,
+      );
       const coreTargetHue = wrapHue(
-        THREE.MathUtils.lerp(controls.baseHue, controls.highlightHue, 0.25 + eruption * 0.6),
+        THREE.MathUtils.lerp(
+          controls.baseHue,
+          controls.highlightHue,
+          0.25 + eruption * 0.6,
+        ),
       );
       const coreHue = wrapHue(coreTargetHue + Math.sin(hueTime + 0.8) * 0.01);
       const particleHue = wrapHue(
-        THREE.MathUtils.lerp(controls.baseHue, controls.highlightHue, eruption * 0.45),
+        THREE.MathUtils.lerp(
+          controls.baseHue,
+          controls.highlightHue,
+          eruption * 0.45,
+        ),
       );
       const sparkHue = wrapHue(
-        THREE.MathUtils.lerp(controls.highlightHue, controls.accentHue, 1 - clamp(eruption * 1.4, 0, 1)),
+        THREE.MathUtils.lerp(
+          controls.highlightHue,
+          controls.accentHue,
+          1 - clamp(eruption * 1.4, 0, 1),
+        ),
       );
 
-      haloMaterial.color.setHSL(haloHue, 0.84 + colorResponse * 0.08, 0.6 + colorResponse * 0.06);
-      outerHaloMaterial.color.setHSL(outerHue, 0.72 + colorResponse * 0.14, 0.56 + eruption * 0.12);
-      coreMaterial.color.setHSL(coreHue, 0.62 + colorResponse * 0.22, 0.8 + eruption * 0.12);
-      particleMaterial.color.setHSL(particleHue, 0.82 + colorResponse * 0.14, 0.72 + eruption * 0.1);
+      haloMaterial.color.setHSL(
+        haloHue,
+        0.84 + colorResponse * 0.08,
+        0.6 + colorResponse * 0.06,
+      );
+      outerHaloMaterial.color.setHSL(
+        outerHue,
+        0.72 + colorResponse * 0.14,
+        0.56 + eruption * 0.12,
+      );
+      coreMaterial.color.setHSL(
+        coreHue,
+        0.62 + colorResponse * 0.22,
+        0.8 + eruption * 0.12,
+      );
+      particleMaterial.color.setHSL(
+        particleHue,
+        0.82 + colorResponse * 0.14,
+        0.72 + eruption * 0.1,
+      );
       sparkMaterial.color.setHSL(sparkHue, 0.9, 0.82 + eruption * 0.16);
 
       haloMaterial.opacity =
-        (0.2 + responseEnergy * 0.32 + signals.brightness * 0.1 + colorResponse * 0.06) *
+        (0.2 +
+          adaptiveResponse * 0.32 +
+          signals.brightness * 0.1 +
+          colorResponse * 0.06) *
         controls.haloStrength;
-      outerHaloMaterial.opacity = 0.11 + responseEnergy * 0.1 + eruption * 0.05;
+      outerHaloMaterial.opacity =
+        0.11 + adaptiveResponse * 0.1 + eruption * 0.05;
       coreMaterial.opacity =
-        (0.26 + responseEnergy * 0.42 + signals.attack * 0.16 + colorResponse * 0.08) *
+        (0.26 +
+          adaptiveResponse * 0.42 +
+          signals.attack * 0.16 +
+          colorResponse * 0.08) *
         controls.coreStrength;
 
       halo.scale.setScalar(7.6 * haloPulse * (1 + controls.bloomBias * 0.08));
-      outerHalo.scale.setScalar(10.3 * (1 + responseEnergy * 0.07 + eruption * 0.04));
-      core.scale.setScalar(2.3 + responseEnergy * 0.9 + signals.attack * 0.24 + colorResponse * 0.14);
+      outerHalo.scale.setScalar(
+        10.3 * (1 + adaptiveResponse * 0.07 + eruption * 0.04),
+      );
+      core.scale.setScalar(
+        2.3 +
+          adaptiveResponse * 0.9 +
+          signals.attack * 0.24 +
+          colorResponse * 0.14,
+      );
 
       const dynamicSparkThreshold = Math.max(
         0.02,
-        controls.sparkThreshold - responseEnergy * 0.06,
+        controls.sparkThreshold - adaptiveResponse * 0.06,
       );
       if (signals.attack > dynamicSparkThreshold) {
         spawnSparks(
           Math.round(
-            controls.sparkBurstSize + signals.attack * 12 + responseEnergy * 7,
+            controls.sparkBurstSize +
+              signals.attack * 12 +
+              adaptiveResponse * 7,
           ),
-          clamp(signals.attack * 1.12 + responseEnergy * 0.58, 0, 1),
+          clamp(signals.attack * 1.12 + adaptiveResponse * 0.58, 0, 1),
         );
       }
 
@@ -996,6 +1115,18 @@ export function ThoughtOrbScene({
               forceRender((n) => n + 1);
             }}
           />
+          <Control
+            label="Sustain backoff (monitor)"
+            helpText="Habituation amount for sustained tones/noise. Higher values back off steady response and re-emphasize new changes/attacks."
+            min={0}
+            max={1}
+            step={0.01}
+            value={controlsRef.current.sustainBackoff}
+            onChange={(v) => {
+              controlsRef.current.sustainBackoff = v;
+              forceRender((n) => n + 1);
+            }}
+          />
           <div
             style={{
               fontSize: 11,
@@ -1025,6 +1156,8 @@ export function ThoughtOrbScene({
             border: "1px solid rgba(145, 225, 255, 0.14)",
             backdropFilter: "blur(16px)",
             boxShadow: "0 0 28px rgba(0,0,0,0.32)",
+            maxHeight: "90vh",
+            overflowY: "auto",
           }}
         >
           <div
@@ -1083,6 +1216,18 @@ export function ThoughtOrbScene({
             value={controlsRef.current.speechBias}
             onChange={(v) => {
               controlsRef.current.speechBias = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Sustain backoff"
+            helpText="Reduces response to steady sustained input (noise or held note) so new motion/attacks stand out again."
+            min={0}
+            max={1}
+            step={0.01}
+            value={controlsRef.current.sustainBackoff}
+            onChange={(v) => {
+              controlsRef.current.sustainBackoff = v;
               forceRender((n) => n + 1);
             }}
           />
@@ -1195,6 +1340,36 @@ export function ThoughtOrbScene({
           >
             Color Dynamics
           </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 6,
+              marginBottom: 8,
+            }}
+          >
+            {COLOR_PRESETS.map((preset) => (
+              <button
+                key={preset.name}
+                type="button"
+                onClick={() => {
+                  Object.assign(controlsRef.current, preset.values);
+                  forceRender((n) => n + 1);
+                }}
+                style={{
+                  border: "1px solid rgba(162, 227, 255, 0.22)",
+                  borderRadius: 999,
+                  padding: "0.34rem 0.52rem",
+                  background: "rgba(0,0,0,0.34)",
+                  color: "#dff6ff",
+                  cursor: "pointer",
+                  fontSize: 11,
+                }}
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
           <Control
             label="Base hue"
             helpText="Primary body/halo hue family. Use this to shift the cloud's core identity color."
@@ -1255,17 +1430,6 @@ export function ThoughtOrbScene({
               forceRender((n) => n + 1);
             }}
           />
-          <div
-            style={{
-              marginTop: 10,
-              fontSize: 12,
-              opacity: 0.75,
-              lineHeight: 1.4,
-            }}
-          >
-            This pass replaces springier particle following with shared, slow
-            flow anchors so nearby regions drift together like internal weather.
-          </div>
         </div>
       ) : null}
 

@@ -11,7 +11,7 @@ export default function Page() {
   const initialControls = useMemo(
     () => ({
       masterIntensity: 1.3,
-      idleDrift: 0.2,
+      idleDrift: 1.2,
       agitationGain: 1.75,
       sparkThreshold: 0.1,
       sparkBurstSize: 7,
@@ -27,6 +27,7 @@ export default function Page() {
       highlightHue: 0.1,
       hueDrift: 0.018,
       speechColorBoost: 1,
+      sustainBackoff: 0.5,
     }),
     [],
   );
