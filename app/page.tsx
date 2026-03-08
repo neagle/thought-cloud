@@ -22,6 +22,11 @@ export default function Page() {
       speechBias: 1.45,
       flowSmoothing: 0.97,
       cohesion: 0.84,
+      baseHue: 0.56,
+      accentHue: 0.72,
+      highlightHue: 0.1,
+      hueDrift: 0.018,
+      speechColorBoost: 1,
     }),
     [],
   );

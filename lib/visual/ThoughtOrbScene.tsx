@@ -17,6 +17,11 @@ type Controls = {
   speechBias: number;
   flowSmoothing: number;
   cohesion: number;
+  baseHue: number;
+  accentHue: number;
+  highlightHue: number;
+  hueDrift: number;
+  speechColorBoost: number;
 };
 
 interface Props {
@@ -43,9 +48,63 @@ type FlowAnchor = {
   radius: number;
 };
 
+type MonitorSignalKey =
+  | "level"
+  | "presence"
+  | "attack"
+  | "brightness"
+  | "speaking"
+  | "response"
+  | "agitation";
+
+const MONITOR_SERIES: Array<{
+  key: MonitorSignalKey;
+  label: string;
+  color: string;
+}> = [
+  { key: "level", label: "Level", color: "#66d9ff" },
+  { key: "presence", label: "Presence", color: "#66ffb5" },
+  { key: "attack", label: "Attack", color: "#ff8ec7" },
+  { key: "brightness", label: "Brightness", color: "#ffd56b" },
+  { key: "speaking", label: "Speaking", color: "#b5a5ff" },
+  { key: "response", label: "Response", color: "#ffffff" },
+  { key: "agitation", label: "Agitation", color: "#ff9f66" },
+];
+
+const MONITOR_HISTORY_LENGTH = 220;
+
+function makeMonitorHistory(): Record<MonitorSignalKey, number[]> {
+  const base = new Array(MONITOR_HISTORY_LENGTH).fill(0);
+  return {
+    level: [...base],
+    presence: [...base],
+    attack: [...base],
+    brightness: [...base],
+    speaking: [...base],
+    response: [...base],
+    agitation: [...base],
+  };
+}
+
+function pushMonitorSample(
+  history: Record<MonitorSignalKey, number[]>,
+  key: MonitorSignalKey,
+  value: number,
+) {
+  const samples = history[key];
+  samples.push(clamp(value, 0, 1));
+  if (samples.length > MONITOR_HISTORY_LENGTH) {
+    samples.shift();
+  }
+}
+
 const rand = THREE.MathUtils.randFloatSpread;
 const clamp = THREE.MathUtils.clamp;
 const BASE_MAX_PARTICLE_RADIUS = 2.75;
+
+function wrapHue(value: number) {
+  return THREE.MathUtils.euclideanModulo(value, 1);
+}
 
 function makeSpriteTexture(inner: string, outer: string) {
   const size = 256;
@@ -90,8 +149,84 @@ export function ThoughtOrbScene({
   const controlsRef = useRef<Controls>(initialControls);
   const audioRef = useRef<AudioAnalyzer | null>(null);
   const startedRef = useRef(false);
+  const monitorCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const monitorHistoryRef =
+    useRef<Record<MonitorSignalKey, number[]>>(makeMonitorHistory());
+  const monitorSignalsRef = useRef<Record<MonitorSignalKey, number>>({
+    level: 0,
+    presence: 0,
+    attack: 0,
+    brightness: 0,
+    speaking: 0,
+    response: 0,
+    agitation: 0,
+  });
   const [error, setError] = useState<string | null>(null);
+  const [monitorOpen, setMonitorOpen] = useState(true);
   const [, forceRender] = useState(0);
+  const [, forceMonitorRender] = useState(0);
+
+  useEffect(() => {
+    if (!monitorOpen) return;
+    const interval = window.setInterval(() => {
+      forceMonitorRender((n) => n + 1);
+    }, 120);
+    return () => window.clearInterval(interval);
+  }, [monitorOpen]);
+
+  useEffect(() => {
+    if (!monitorOpen) return;
+    const canvasEl = monitorCanvasRef.current;
+    if (!canvasEl) return;
+    const context = canvasEl.getContext(
+      "2d",
+    ) as CanvasRenderingContext2D | null;
+    if (!context) return;
+    const ctx: CanvasRenderingContext2D = context;
+
+    let frameId = 0;
+
+    function draw() {
+      const width = ctx.canvas.width;
+      const height = ctx.canvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.fillStyle = "rgba(0,0,0,0.78)";
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.strokeStyle = "rgba(180,220,255,0.16)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 4; i += 1) {
+        const y = (height / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      const history = monitorHistoryRef.current;
+      for (const series of MONITOR_SERIES) {
+        const samples = history[series.key];
+        if (samples.length < 2) continue;
+        ctx.beginPath();
+        ctx.strokeStyle = series.color;
+        ctx.lineWidth = series.key === "response" ? 2.1 : 1.35;
+        for (let i = 0; i < samples.length; i += 1) {
+          const t = i / (samples.length - 1);
+          const x = t * width;
+          const y = height - samples[i] * (height - 2) - 1;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      frameId = requestAnimationFrame(draw);
+    }
+
+    draw();
+    return () => cancelAnimationFrame(frameId);
+  }, [monitorOpen]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -429,6 +564,23 @@ export function ThoughtOrbScene({
       const dynamicMaxRadius =
         BASE_MAX_PARTICLE_RADIUS + responseEnergy * 1.45 + signals.attack * 0.7;
 
+      monitorSignalsRef.current.level = signals.level;
+      monitorSignalsRef.current.presence = signals.presence;
+      monitorSignalsRef.current.attack = signals.attack;
+      monitorSignalsRef.current.brightness = signals.brightness;
+      monitorSignalsRef.current.speaking = signals.speaking;
+      monitorSignalsRef.current.response = responseEnergy;
+      monitorSignalsRef.current.agitation = clamp(agitation / 2.7, 0, 1);
+
+      const monitorHistory = monitorHistoryRef.current;
+      pushMonitorSample(monitorHistory, "level", signals.level);
+      pushMonitorSample(monitorHistory, "presence", signals.presence);
+      pushMonitorSample(monitorHistory, "attack", signals.attack);
+      pushMonitorSample(monitorHistory, "brightness", signals.brightness);
+      pushMonitorSample(monitorHistory, "speaking", signals.speaking);
+      pushMonitorSample(monitorHistory, "response", responseEnergy);
+      pushMonitorSample(monitorHistory, "agitation", agitation / 2.7);
+
       updateFlowAnchors(elapsed, agitation, speechEnergy);
 
       const positionAttr = particleGeometry.getAttribute(
@@ -567,34 +719,42 @@ export function ThoughtOrbScene({
       group.rotation.x = Math.sin(elapsed * 0.05) * 0.04;
       group.rotation.z = Math.cos(elapsed * 0.04) * 0.03;
 
-      const hueShift = (elapsed * 0.012) % 1;
-      haloMaterial.color.setHSL(
-        0.56 + Math.sin(hueShift * Math.PI * 2) * 0.03,
-        0.85,
-        0.62,
+      const hueTime = elapsed * controls.hueDrift;
+      const hueSway = Math.sin(hueTime) * 0.024 + Math.cos(hueTime * 0.57) * 0.012;
+      const colorResponse = clamp(responseEnergy * controls.speechColorBoost, 0, 1);
+      const eruption = clamp(signals.attack * 1.2 + colorResponse * 0.35, 0, 1);
+      const warmShift = THREE.MathUtils.lerp(0, 0.085, eruption);
+
+      const haloHue = wrapHue(controls.baseHue + hueSway + colorResponse * 0.012 + warmShift * 0.35);
+      const outerHue = wrapHue(controls.accentHue - hueSway * 0.7 + colorResponse * 0.018 + warmShift * 0.6);
+      const coreTargetHue = wrapHue(
+        THREE.MathUtils.lerp(controls.baseHue, controls.highlightHue, 0.25 + eruption * 0.6),
       );
-      outerHaloMaterial.color.setHSL(
-        0.72 + Math.cos(hueShift * Math.PI * 2) * 0.03,
-        0.75,
-        0.58,
+      const coreHue = wrapHue(coreTargetHue + Math.sin(hueTime + 0.8) * 0.01);
+      const particleHue = wrapHue(
+        THREE.MathUtils.lerp(controls.baseHue, controls.highlightHue, eruption * 0.45),
       );
-      coreMaterial.color.setHSL(
-        0.53 + Math.sin(hueShift * Math.PI * 2 + 0.7) * 0.02,
-        0.65,
-        0.82,
+      const sparkHue = wrapHue(
+        THREE.MathUtils.lerp(controls.highlightHue, controls.accentHue, 1 - clamp(eruption * 1.4, 0, 1)),
       );
 
+      haloMaterial.color.setHSL(haloHue, 0.84 + colorResponse * 0.08, 0.6 + colorResponse * 0.06);
+      outerHaloMaterial.color.setHSL(outerHue, 0.72 + colorResponse * 0.14, 0.56 + eruption * 0.12);
+      coreMaterial.color.setHSL(coreHue, 0.62 + colorResponse * 0.22, 0.8 + eruption * 0.12);
+      particleMaterial.color.setHSL(particleHue, 0.82 + colorResponse * 0.14, 0.72 + eruption * 0.1);
+      sparkMaterial.color.setHSL(sparkHue, 0.9, 0.82 + eruption * 0.16);
+
       haloMaterial.opacity =
-        (0.2 + responseEnergy * 0.32 + signals.brightness * 0.1) *
+        (0.2 + responseEnergy * 0.32 + signals.brightness * 0.1 + colorResponse * 0.06) *
         controls.haloStrength;
-      outerHaloMaterial.opacity = 0.11 + responseEnergy * 0.1;
+      outerHaloMaterial.opacity = 0.11 + responseEnergy * 0.1 + eruption * 0.05;
       coreMaterial.opacity =
-        (0.26 + responseEnergy * 0.42 + signals.attack * 0.16) *
+        (0.26 + responseEnergy * 0.42 + signals.attack * 0.16 + colorResponse * 0.08) *
         controls.coreStrength;
 
       halo.scale.setScalar(7.6 * haloPulse * (1 + controls.bloomBias * 0.08));
-      outerHalo.scale.setScalar(10.3 * (1 + responseEnergy * 0.07));
-      core.scale.setScalar(2.3 + responseEnergy * 0.9 + signals.attack * 0.24);
+      outerHalo.scale.setScalar(10.3 * (1 + responseEnergy * 0.07 + eruption * 0.04));
+      core.scale.setScalar(2.3 + responseEnergy * 0.9 + signals.attack * 0.24 + colorResponse * 0.14);
 
       const dynamicSparkThreshold = Math.max(
         0.02,
@@ -700,6 +860,157 @@ export function ThoughtOrbScene({
         {panelOpen ? "Hide controls" : "Show controls"}
       </button>
 
+      <button
+        type="button"
+        onClick={() => setMonitorOpen((v) => !v)}
+        style={{
+          position: "absolute",
+          top: 58,
+          right: 14,
+          zIndex: 15,
+          border: "1px solid rgba(162, 227, 255, 0.22)",
+          borderRadius: 999,
+          padding: "0.5rem 0.84rem",
+          background: "rgba(0,0,0,0.48)",
+          color: "#dff6ff",
+          backdropFilter: "blur(10px)",
+          cursor: "pointer",
+          fontSize: 12,
+        }}
+      >
+        {monitorOpen ? "Hide audio monitor" : "Show audio monitor"}
+      </button>
+
+      {monitorOpen ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 96,
+            right: 14,
+            width: 360,
+            zIndex: 15,
+            padding: 12,
+            borderRadius: 16,
+            background: "rgba(5, 10, 18, 0.72)",
+            border: "1px solid rgba(145, 225, 255, 0.14)",
+            backdropFilter: "blur(16px)",
+            boxShadow: "0 0 28px rgba(0,0,0,0.32)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              marginBottom: 8,
+              letterSpacing: "0.03em",
+              textTransform: "uppercase",
+            }}
+          >
+            Audio Tuning Monitor
+          </div>
+          <canvas
+            ref={monitorCanvasRef}
+            width={336}
+            height={126}
+            style={{
+              width: "100%",
+              borderRadius: 10,
+              border: "1px solid rgba(160,220,255,0.14)",
+              marginBottom: 8,
+            }}
+          />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 6,
+              marginBottom: 10,
+              fontSize: 11,
+            }}
+          >
+            {MONITOR_SERIES.map((series) => {
+              const value = monitorSignalsRef.current[series.key] ?? 0;
+              return (
+                <div key={series.key} style={{ display: "grid", gap: 2 }}>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span style={{ color: series.color }}>{series.label}</span>
+                    <span style={{ opacity: 0.72 }}>{value.toFixed(2)}</span>
+                  </div>
+                  <div
+                    style={{
+                      height: 6,
+                      borderRadius: 999,
+                      background: "rgba(160,210,240,0.14)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${clamp(value, 0, 1) * 100}%`,
+                        height: "100%",
+                        background: series.color,
+                        opacity: 0.85,
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <Control
+            label="Speech bias (monitor)"
+            helpText="How strongly speech presence is interpreted as intent/activity. Raise to make spoken words drive motion sooner and more intensely."
+            min={0.4}
+            max={2}
+            step={0.01}
+            value={controlsRef.current.speechBias}
+            onChange={(v) => {
+              controlsRef.current.speechBias = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Agitation gain (monitor)"
+            helpText="Scales how much audio energy turns into internal current speed and turbulence. Higher values feel more animated in speech peaks."
+            min={0.1}
+            max={2.5}
+            step={0.01}
+            value={controlsRef.current.agitationGain}
+            onChange={(v) => {
+              controlsRef.current.agitationGain = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Spark threshold (monitor)"
+            helpText="Minimum attack needed to trigger spark bursts. Lower values create more frequent highlight pops; higher values reserve them for stronger syllables."
+            min={0.01}
+            max={0.5}
+            step={0.005}
+            value={controlsRef.current.sparkThreshold}
+            onChange={(v) => {
+              controlsRef.current.sparkThreshold = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <div
+            style={{
+              fontSize: 11,
+              opacity: 0.72,
+              marginTop: 4,
+              lineHeight: 1.35,
+            }}
+          >
+            Target for female speech: keep Presence and Response clearly above
+            Level during syllables, with Attack peaks causing visible spark/flow
+            punctuations.
+          </div>
+        </div>
+      ) : null}
+
       {panelOpen ? (
         <div
           style={{
@@ -729,6 +1040,7 @@ export function ThoughtOrbScene({
           </div>
           <Control
             label="Master intensity"
+            helpText="Overall energy multiplier for particle motion. Higher values make the whole cloud feel more active."
             min={0.3}
             max={2}
             step={0.01}
@@ -740,6 +1052,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Idle drift"
+            helpText="Baseline movement when there is little speech. Lower keeps silence calm; higher keeps constant background motion."
             min={0}
             max={1.2}
             step={0.01}
@@ -751,6 +1064,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Agitation gain"
+            helpText="How strongly detected speech energy increases current speed and turbulence."
             min={0.1}
             max={2.5}
             step={0.01}
@@ -762,6 +1076,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Speech bias"
+            helpText="Sensitivity to spoken presence specifically. Raise if dialogue feels under-responsive."
             min={0.4}
             max={2}
             step={0.01}
@@ -773,6 +1088,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Flow smoothing"
+            helpText="Inertia/drag of particle velocity. Higher values feel smoother and less jittery."
             min={0.2}
             max={1}
             step={0.01}
@@ -784,6 +1100,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Orb cohesion"
+            helpText="How strongly particles are kept near the orb body. Higher values keep a tighter, more singular entity."
             min={0.45}
             max={1.05}
             step={0.01}
@@ -795,6 +1112,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Spark threshold"
+            helpText="Minimum attack needed for spark events. Lower means more frequent flashes."
             min={0.01}
             max={0.5}
             step={0.005}
@@ -806,6 +1124,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Spark burst size"
+            helpText="How many spark particles appear when a spark trigger occurs."
             min={1}
             max={18}
             step={1}
@@ -817,6 +1136,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Halo strength"
+            helpText="Brightness of the outer ambient glow around the cloud."
             min={0.2}
             max={2}
             step={0.01}
@@ -828,6 +1148,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Core strength"
+            helpText="Brightness of the inner nucleus; useful for readability from a distance."
             min={0.2}
             max={2}
             step={0.01}
@@ -839,6 +1160,7 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Bloom bias"
+            helpText="How much the glow appears to bloom/expand around bright moments."
             min={0}
             max={1.5}
             step={0.01}
@@ -850,12 +1172,86 @@ export function ThoughtOrbScene({
           />
           <Control
             label="Rotation drift"
+            helpText="Slow global rotation of the whole thought cloud."
             min={0}
             max={0.3}
             step={0.005}
             value={controlsRef.current.rotationDrift}
             onChange={(v) => {
               controlsRef.current.rotationDrift = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              marginTop: 8,
+              marginBottom: 6,
+              letterSpacing: "0.03em",
+              textTransform: "uppercase",
+              opacity: 0.82,
+            }}
+          >
+            Color Dynamics
+          </div>
+          <Control
+            label="Base hue"
+            helpText="Primary body/halo hue family. Use this to shift the cloud's core identity color."
+            min={0}
+            max={1}
+            step={0.001}
+            value={controlsRef.current.baseHue}
+            onChange={(v) => {
+              controlsRef.current.baseHue = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Accent hue"
+            helpText="Secondary hue used in outer halo and color interplay around the cloud."
+            min={0}
+            max={1}
+            step={0.001}
+            value={controlsRef.current.accentHue}
+            onChange={(v) => {
+              controlsRef.current.accentHue = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Highlight hue"
+            helpText="Transient eruption hue used for attack/sustained speech highlights and sparks."
+            min={0}
+            max={1}
+            step={0.001}
+            value={controlsRef.current.highlightHue}
+            onChange={(v) => {
+              controlsRef.current.highlightHue = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Hue drift"
+            helpText="Rate of slow hue motion over time. Lower is stable identity; higher is more evolving color weather."
+            min={0}
+            max={0.08}
+            step={0.001}
+            value={controlsRef.current.hueDrift}
+            onChange={(v) => {
+              controlsRef.current.hueDrift = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Speech color boost"
+            helpText="How strongly speech pushes saturation/highlight shifts. Raise for more obvious color response in phrases."
+            min={0}
+            max={2}
+            step={0.01}
+            value={controlsRef.current.speechColorBoost}
+            onChange={(v) => {
+              controlsRef.current.speechColorBoost = v;
               forceRender((n) => n + 1);
             }}
           />
@@ -898,6 +1294,7 @@ export function ThoughtOrbScene({
 
 interface ControlProps {
   label: string;
+  helpText?: string;
   min: number;
   max: number;
   step: number;
@@ -905,7 +1302,15 @@ interface ControlProps {
   onChange: (value: number) => void;
 }
 
-function Control({ label, min, max, step, value, onChange }: ControlProps) {
+function Control({
+  label,
+  helpText,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+}: ControlProps) {
   return (
     <label style={{ display: "block", marginBottom: 10 }}>
       <div
@@ -917,7 +1322,30 @@ function Control({ label, min, max, step, value, onChange }: ControlProps) {
           marginBottom: 4,
         }}
       >
-        <span>{label}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span>{label}</span>
+          {helpText ? (
+            <span
+              title={helpText}
+              style={{
+                display: "inline-flex",
+                width: 14,
+                height: 14,
+                borderRadius: 999,
+                border: "1px solid rgba(170,220,255,0.45)",
+                color: "#d4f2ff",
+                fontSize: 10,
+                lineHeight: "14px",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "help",
+                opacity: 0.85,
+              }}
+            >
+              ?
+            </span>
+          ) : null}
+        </span>
         <span style={{ opacity: 0.75 }}>{value.toFixed(step < 1 ? 2 : 0)}</span>
       </div>
       <input
