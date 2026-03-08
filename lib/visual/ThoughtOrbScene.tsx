@@ -42,6 +42,18 @@ type Spark = {
   base: THREE.Vector3;
 };
 
+type FireflyOverlay = {
+  active: boolean;
+  life: number;
+  maxLife: number;
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  drift: THREE.Vector3;
+  flickerOffset: number;
+  strength: number;
+  hueOffset: number;
+};
+
 type FlowAnchor = {
   base: THREE.Vector3;
   current: THREE.Vector3;
@@ -122,6 +134,9 @@ const COLOR_PRESETS = [
       highlightHue: 0.1,
       hueDrift: 0.018,
       speechColorBoost: 1,
+      fireflyChance: 0.08,
+      fireflyHold: 0.14,
+      fireflyFade: 0.64,
     },
   },
   {
@@ -132,6 +147,9 @@ const COLOR_PRESETS = [
       highlightHue: 0.06,
       hueDrift: 0.024,
       speechColorBoost: 1.28,
+      fireflyChance: 0.12,
+      fireflyHold: 0.18,
+      fireflyFade: 0.9,
     },
   },
   {
@@ -142,6 +160,22 @@ const COLOR_PRESETS = [
       highlightHue: 0.12,
       hueDrift: 0.021,
       speechColorBoost: 1.36,
+      fireflyChance: 0.1,
+      fireflyHold: 0.16,
+      fireflyFade: 0.82,
+    },
+  },
+  {
+    name: "Volcanic + Blue",
+    values: {
+      baseHue: 0.03,
+      accentHue: 0.61,
+      highlightHue: 0.14,
+      hueDrift: 0.015,
+      speechColorBoost: 1.45,
+      fireflyChance: 0.2,
+      fireflyHold: 0.2,
+      fireflyFade: 1.05,
     },
   },
 ] as const;
@@ -299,9 +333,15 @@ export function ThoughtOrbScene({
       "rgba(158,240,255,0.9)",
       "rgba(158,240,255,0)",
     );
+
     const sparkTexture = makeSpriteTexture(
       "rgba(255,210,255,1)",
       "rgba(255,210,255,0)",
+    );
+
+    const fireflyTexture = makeSpriteTexture(
+      "rgba(255,245,180,1)",
+      "rgba(255,200,40,0)",
     );
     const fieldTexture = makeSpriteTexture(
       "rgba(140,220,255,0.85)",
@@ -317,6 +357,10 @@ export function ThoughtOrbScene({
     const radii = new Float32Array(particleCount);
     const fireflyLife = new Float32Array(particleCount);
     const fireflyIntensity = new Float32Array(particleCount);
+    const fireflyBurstCount = 4;
+    const fireflyBurstLife = new Float32Array(fireflyBurstCount);
+    const fireflyBurstAnchor = new Uint8Array(fireflyBurstCount);
+    const fireflyBurstStrength = new Float32Array(fireflyBurstCount);
 
     const flowAnchorCount = 18;
     const flowAnchors: FlowAnchor[] = [];
@@ -495,6 +539,62 @@ export function ThoughtOrbScene({
     const sparkPoints = new THREE.Points(sparkGeometry, sparkMaterial);
     scene.add(sparkPoints);
 
+    const fireflyOverlayCount = 120;
+    const fireflyOverlayPositions = new Float32Array(fireflyOverlayCount * 3);
+    const fireflyOverlayColors = new Float32Array(fireflyOverlayCount * 3);
+    const fireflies: FireflyOverlay[] = [];
+
+    for (let i = 0; i < fireflyOverlayCount; i += 1) {
+      const ix = i * 3;
+      fireflyOverlayPositions[ix] = 999;
+      fireflyOverlayPositions[ix + 1] = 999;
+      fireflyOverlayPositions[ix + 2] = 999;
+
+      fireflyOverlayColors[ix] = 1;
+      fireflyOverlayColors[ix + 1] = 0.92;
+      fireflyOverlayColors[ix + 2] = 0.18;
+
+      fireflies.push({
+        active: false,
+        life: 0,
+        maxLife: 0,
+        position: new THREE.Vector3(),
+        velocity: new THREE.Vector3(),
+        drift: new THREE.Vector3(),
+        flickerOffset: Math.random() * Math.PI * 2,
+        strength: 1,
+        hueOffset: rand(0.06),
+      });
+    }
+
+    const fireflyOverlayGeometry = new THREE.BufferGeometry();
+    fireflyOverlayGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(fireflyOverlayPositions, 3),
+    );
+    fireflyOverlayGeometry.setAttribute(
+      "color",
+      new THREE.BufferAttribute(fireflyOverlayColors, 3),
+    );
+
+    const fireflyOverlayMaterial = new THREE.PointsMaterial({
+      map: fireflyTexture,
+      size: 0.96,
+      transparent: true,
+      opacity: 1,
+      vertexColors: true,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+      sizeAttenuation: true,
+    });
+
+    const fireflyPoints = new THREE.Points(
+      fireflyOverlayGeometry,
+      fireflyOverlayMaterial,
+    );
+    scene.add(fireflyPoints);
+
     const ambientLight = new THREE.AmbientLight("#6aa7ff", 0.2);
     scene.add(ambientLight);
 
@@ -502,6 +602,39 @@ export function ThoughtOrbScene({
     let frameId = 0;
     let sustainedAccumulator = 0;
     let previousResponseEnergy = 0;
+    let previousNovelty = 0;
+    let fireflyOverlayCooldown = 0;
+    let fireflyBurstCooldown = 0;
+    let fireflyEmissionBudget = 0;
+
+    function activateFirefly(index: number, strength: number) {
+      const controls = controlsRef.current;
+      const ix = index * 3;
+      fireflyLife[index] =
+        controls.fireflyHold +
+        controls.fireflyFade * (0.9 + Math.random() * 0.45);
+      fireflyIntensity[index] = clamp(
+        1.02 + strength * 0.55 + Math.random() * 0.28,
+        0,
+        1.6,
+      );
+
+      const px = positions[ix];
+      const py = positions[ix + 1];
+      const pz = positions[ix + 2];
+      const invRadius = 1 / Math.max(0.001, Math.hypot(px, py, pz));
+      const nx = px * invRadius;
+      const ny = py * invRadius;
+      const nz = pz * invRadius;
+      const tx = -ny + rand(0.8) * 0.25;
+      const ty = nx + rand(0.8) * 0.25;
+      const tz = rand(0.8) * 0.28;
+      const kick = (0.0024 + strength * 0.0038) * (0.7 + Math.random() * 0.7);
+
+      velocities[ix] += (nx * 0.65 + tx * 0.35) * kick;
+      velocities[ix + 1] += (ny * 0.65 + ty * 0.35) * kick;
+      velocities[ix + 2] += (nz * 0.65 + tz * 0.35) * kick;
+    }
 
     function spawnSparks(amount: number, intensity: number) {
       const usable = Math.min(amount, sparks.length);
@@ -519,6 +652,55 @@ export function ThoughtOrbScene({
           .add(new THREE.Vector3(rand(0.008), rand(0.008), rand(0.008)));
         spark.life = 0.7 + Math.random() * 0.5;
         spark.decay = 0.012 + Math.random() * 0.016;
+      }
+    }
+
+    function spawnOverlayFireflies(
+      amount: number,
+      strength: number,
+      anchorIndex?: number,
+    ) {
+      let spawned = 0;
+
+      for (let i = 0; i < fireflies.length && spawned < amount; i += 1) {
+        const firefly = fireflies[i];
+        if (firefly.active) continue;
+
+        const origin =
+          anchorIndex === undefined
+            ? new THREE.Vector3(rand(1.2), rand(1.2), rand(1.2))
+            : flowAnchors[anchorIndex].current
+                .clone()
+                .add(new THREE.Vector3(rand(0.8), rand(0.8), rand(0.8)));
+        if (origin.lengthSq() < 0.001) {
+          origin.set(0.3, 0.2, 0.1);
+        }
+        origin.normalize().multiplyScalar(0.75 + Math.random() * 1.35);
+
+        const outward = origin.clone().normalize();
+        const tangent = new THREE.Vector3(rand(0.8), rand(0.8), rand(0.8))
+          .cross(outward)
+          .normalize();
+
+        firefly.active = true;
+        const controls = controlsRef.current;
+        firefly.life =
+          0.75 +
+          controls.fireflyHold +
+          controls.fireflyFade * 1.3 +
+          Math.random() * 1.1;
+        firefly.maxLife = firefly.life;
+        firefly.position.copy(origin);
+        firefly.strength = clamp(1 + strength * 1.1, 1, 2.4);
+
+        firefly.velocity
+          .copy(outward)
+          .multiplyScalar(0.012 + strength * 0.02)
+          .addScaledVector(tangent, 0.007 + Math.random() * 0.01);
+
+        firefly.drift.set(rand(0.0036), rand(0.0036), rand(0.0036));
+
+        spawned += 1;
       }
     }
 
@@ -587,6 +769,8 @@ export function ThoughtOrbScene({
       const responseDelta = Math.abs(responseEnergy - previousResponseEnergy);
       previousResponseEnergy = responseEnergy;
       const novelty = clamp(signals.attack * 1.25 + responseDelta * 5.2, 0, 1);
+      const noveltyRise = Math.max(0, novelty - previousNovelty);
+      previousNovelty = novelty;
       const sustainedPortion = clamp(responseEnergy - novelty * 0.9, 0, 1);
       sustainedAccumulator = THREE.MathUtils.lerp(
         sustainedAccumulator,
@@ -599,6 +783,34 @@ export function ThoughtOrbScene({
         0,
         1,
       );
+
+      fireflyOverlayCooldown = Math.max(0, fireflyOverlayCooldown - delta);
+
+      const overlayTrigger =
+        signals.attack > Math.max(0.02, controls.sparkThreshold * 0.72) ||
+        novelty > 0.16 ||
+        adaptiveResponse > 0.32 ||
+        signals.speaking > 0.18;
+
+      if (overlayTrigger && fireflyOverlayCooldown <= 0) {
+        const amount =
+          6 +
+          Math.round(signals.attack * 16) +
+          Math.round(adaptiveResponse * 8);
+
+        const strength = clamp(
+          signals.attack * 1.35 +
+            adaptiveResponse * 0.95 +
+            signals.speaking * 0.55,
+          0.7,
+          2.3,
+        );
+
+        spawnOverlayFireflies(amount, strength);
+
+        fireflyOverlayCooldown =
+          0.05 + (1 - clamp(signals.attack * 2 + novelty * 0.9, 0, 1)) * 0.08;
+      }
 
       const agitation =
         controls.idleDrift +
@@ -782,53 +994,6 @@ export function ThoughtOrbScene({
 
       positionAttr.needsUpdate = true;
 
-      const colorAttr = particleGeometry.getAttribute(
-        "color",
-      ) as THREE.BufferAttribute;
-      const fireflyTriggerProb = novelty * controls.fireflyChance;
-      const baseColorHSL = new THREE.Color();
-      const fireflyColorHSL = new THREE.Color();
-      fireflyColorHSL.setHSL(
-        controls.accentHue,
-        0.95,
-        0.88 + signals.attack * 0.08,
-      );
-      for (let i = 0; i < particleCount; i += 1) {
-        if (fireflyLife[i] <= 0) {
-          if (Math.random() < fireflyTriggerProb * delta * 60) {
-            fireflyLife[i] = controls.fireflyHold + controls.fireflyFade;
-            fireflyIntensity[i] = 0.72 + Math.random() * 0.28;
-          }
-        } else {
-          fireflyLife[i] = Math.max(
-            0,
-            fireflyLife[i] - delta * (1 / controls.fireflyFade),
-          );
-        }
-        const ix = i * 3;
-        if (fireflyLife[i] > 0) {
-          const holdPhase = controls.fireflyHold;
-          let fadeAmount = 0;
-          if (fireflyLife[i] > holdPhase) {
-            fadeAmount = 1;
-          } else {
-            fadeAmount = fireflyLife[i] / Math.max(0.001, holdPhase);
-          }
-          const mix = fadeAmount * fireflyIntensity[i];
-          baseColorHSL.setRGB(colors[ix], colors[ix + 1], colors[ix + 2]);
-          baseColorHSL.lerp(fireflyColorHSL, mix);
-          colorAttr.setXYZ(i, baseColorHSL.r, baseColorHSL.g, baseColorHSL.b);
-        } else {
-          colorAttr.setXYZ(i, colors[ix], colors[ix + 1], colors[ix + 2]);
-        }
-      }
-      colorAttr.needsUpdate = true;
-
-      group.rotation.y +=
-        delta * controls.rotationDrift * (0.35 + speechEnergy * 0.25);
-      group.rotation.x = Math.sin(elapsed * 0.05) * 0.04;
-      group.rotation.z = Math.cos(elapsed * 0.04) * 0.03;
-
       const hueTime = elapsed * controls.hueDrift;
       const hueSway =
         Math.sin(hueTime) * 0.024 + Math.cos(hueTime * 0.57) * 0.012;
@@ -840,35 +1005,304 @@ export function ThoughtOrbScene({
       const eruption = clamp(signals.attack * 1.2 + colorResponse * 0.35, 0, 1);
       const warmShift = THREE.MathUtils.lerp(0, 0.085, eruption);
 
+      fireflyBurstCooldown = Math.max(0, fireflyBurstCooldown - delta);
+      const burstTriggerStrength = clamp(
+        noveltyRise * 2.6 + signals.attack * 0.9 + eruption * 0.7,
+        0,
+        1.8,
+      );
+      const shouldTriggerBurst =
+        fireflyBurstCooldown <= 0 &&
+        burstTriggerStrength > 0.28 &&
+        (Math.random() < 0.22 + controls.fireflyChance * 1.45 ||
+          burstTriggerStrength > 1.05);
+      if (shouldTriggerBurst) {
+        let slot = 0;
+        let minLife = fireflyBurstLife[0];
+        for (let i = 1; i < fireflyBurstCount; i += 1) {
+          if (fireflyBurstLife[i] < minLife) {
+            minLife = fireflyBurstLife[i];
+            slot = i;
+          }
+        }
+
+        fireflyBurstLife[slot] =
+          0.22 + controls.fireflyHold * 0.9 + controls.fireflyFade * 0.5;
+        fireflyBurstAnchor[slot] = Math.floor(Math.random() * flowAnchorCount);
+        fireflyBurstStrength[slot] = clamp(
+          0.72 + burstTriggerStrength * 0.85,
+          0.65,
+          1.45,
+        );
+        spawnOverlayFireflies(
+          4 + Math.round(burstTriggerStrength * 5),
+          burstTriggerStrength,
+          fireflyBurstAnchor[slot],
+        );
+        fireflyBurstCooldown = THREE.MathUtils.lerp(
+          0.22,
+          0.055,
+          clamp(controls.fireflyChance * 3, 0, 1),
+        );
+      }
+
+      let activeBurstEnergy = 0;
+      for (let i = 0; i < fireflyBurstCount; i += 1) {
+        if (fireflyBurstLife[i] <= 0) continue;
+        fireflyBurstLife[i] = Math.max(0, fireflyBurstLife[i] - delta);
+        activeBurstEnergy += fireflyBurstLife[i] * fireflyBurstStrength[i];
+      }
+
+      const emissionRate =
+        3 +
+        controls.fireflyChance * 20 +
+        clamp(
+          signals.speaking * 0.9 + novelty * 1.25 + burstTriggerStrength,
+          0,
+          2.2,
+        ) *
+          14;
+      fireflyEmissionBudget += emissionRate * delta;
+      const forcedEmits = Math.min(Math.floor(fireflyEmissionBudget), 18);
+      fireflyEmissionBudget -= forcedEmits;
+      if (forcedEmits > 0) {
+        const activeBurstAnchors: number[] = [];
+        for (let b = 0; b < fireflyBurstCount; b += 1) {
+          if (fireflyBurstLife[b] > 0.04) {
+            activeBurstAnchors.push(fireflyBurstAnchor[b]);
+          }
+        }
+
+        if (Math.random() < 0.65) {
+          const overlayAnchor =
+            activeBurstAnchors.length > 0
+              ? activeBurstAnchors[
+                  Math.floor(Math.random() * activeBurstAnchors.length)
+                ]
+              : Math.floor(Math.random() * flowAnchorCount);
+
+          spawnOverlayFireflies(
+            1 +
+              Math.min(
+                3,
+                Math.floor(forcedEmits / 4 + burstTriggerStrength * 2),
+              ),
+            0.45 + burstTriggerStrength * 0.5,
+            overlayAnchor,
+          );
+        }
+
+        for (let emit = 0; emit < forcedEmits; emit += 1) {
+          const targetAnchor =
+            activeBurstAnchors.length > 0 && Math.random() < 0.82
+              ? activeBurstAnchors[
+                  Math.floor(Math.random() * activeBurstAnchors.length)
+                ]
+              : Math.floor(Math.random() * flowAnchorCount);
+
+          let chosen = -1;
+          for (let attempt = 0; attempt < 18; attempt += 1) {
+            const candidate = Math.floor(Math.random() * particleCount);
+            if (fireflyLife[candidate] > 0.08) continue;
+
+            let affinity = 0;
+            if (primaryAnchor[candidate] === targetAnchor) {
+              affinity = anchorBlend[candidate];
+            } else if (secondaryAnchor[candidate] === targetAnchor) {
+              affinity = 1 - anchorBlend[candidate];
+            }
+
+            if (affinity > 0.5 || attempt >= 14) {
+              chosen = candidate;
+              break;
+            }
+          }
+
+          if (chosen >= 0) {
+            activateFirefly(
+              chosen,
+              0.82 + burstTriggerStrength * 0.55 + Math.random() * 0.45,
+            );
+          }
+        }
+      }
+
+      const colorAttr = particleGeometry.getAttribute(
+        "color",
+      ) as THREE.BufferAttribute;
+      const baseColorHSL = new THREE.Color();
+      const fireflyColorHSL = new THREE.Color();
+      const accentShift = Math.sin(hueTime * 0.7 + 1.2) * 0.01;
+      const baseShift = hueSway * 0.75;
+      const highlightShift = Math.cos(hueTime * 0.9 + 0.4) * 0.012;
+      const baseFamilyHue = wrapHue(controls.baseHue + baseShift * 0.6);
+      const accentFamilyHue = wrapHue(
+        controls.accentHue + accentShift + baseShift * 0.2,
+      );
+      const highlightFamilyHue = wrapHue(
+        controls.highlightHue + highlightShift + colorResponse * 0.03,
+      );
+      const fireflyTriggerProb = clamp(
+        (novelty * 0.9 + eruption * 0.45) * controls.fireflyChance * 2.4,
+        0,
+        0.95,
+      );
+      fireflyColorHSL.setHSL(
+        highlightFamilyHue,
+        1,
+        clamp(0.7 + signals.attack * 0.2 + colorResponse * 0.08, 0.62, 0.92),
+      );
+      for (let i = 0; i < particleCount; i += 1) {
+        const ix = i * 3;
+        const radius = Math.hypot(
+          positions[ix],
+          positions[ix + 1],
+          positions[ix + 2],
+        );
+        const radiusNorm = clamp(radius / (dynamicMaxRadius + 0.0001), 0, 1);
+        const seed = seeds[i];
+        const orbitalBand = clamp(
+          0.5 +
+            Math.sin(seed * 2.6 + elapsed * 0.42 + radiusNorm * 4.3) * 0.34 +
+            (0.5 - radiusNorm) * 0.38,
+          0,
+          1,
+        );
+        const speechPush = clamp(eruption * 0.72 + novelty * 0.62, 0, 1);
+        const hueMixBaseAccent = THREE.MathUtils.lerp(
+          baseFamilyHue,
+          accentFamilyHue,
+          orbitalBand,
+        );
+        const particleHue = wrapHue(
+          THREE.MathUtils.lerp(
+            hueMixBaseAccent,
+            highlightFamilyHue,
+            clamp(speechPush * (0.42 + orbitalBand * 0.52), 0, 1),
+          ) +
+            Math.sin(seed * 6.8 + elapsed * 0.6) * 0.02,
+        );
+        const particleSat = clamp(
+          0.78 + orbitalBand * 0.2 + colorResponse * 0.22,
+          0.6,
+          1,
+        );
+        const particleLight = clamp(
+          0.34 +
+            (1 - radiusNorm) * 0.24 +
+            speechPush * 0.26 +
+            orbitalBand * 0.07,
+          0.2,
+          0.92,
+        );
+        baseColorHSL.setHSL(particleHue, particleSat, particleLight);
+
+        let burstMix = 0;
+        for (let b = 0; b < fireflyBurstCount; b += 1) {
+          const burstLife = fireflyBurstLife[b];
+          if (burstLife <= 0) continue;
+
+          const burstAnchor = fireflyBurstAnchor[b];
+          let anchorAffinity = 0;
+          if (primaryAnchor[i] === burstAnchor) {
+            anchorAffinity = anchorBlend[i];
+          } else if (secondaryAnchor[i] === burstAnchor) {
+            anchorAffinity = 1 - anchorBlend[i];
+          }
+          if (anchorAffinity <= 0.04) continue;
+
+          const burstPhase = 1 - clamp(burstLife / 1.6, 0, 1);
+          const flicker =
+            0.68 +
+            Math.sin(seed * 8.2 + elapsed * 18 + burstPhase * Math.PI * 2) *
+              0.32;
+          burstMix +=
+            anchorAffinity *
+            fireflyBurstStrength[b] *
+            (0.42 + speechPush * 0.58) *
+            flicker;
+        }
+        burstMix = clamp(burstMix, 0, 1.2);
+
+        if (fireflyLife[i] <= 0) {
+          if (
+            Math.random() < fireflyTriggerProb * delta * 60 ||
+            burstMix > 0.7
+          ) {
+            activateFirefly(i, 0.62 + burstMix * 0.8);
+          }
+        } else {
+          fireflyLife[i] = Math.max(0, fireflyLife[i] - delta);
+        }
+
+        let fireflyMix = 0;
+        if (fireflyLife[i] > 0) {
+          const fadeWindow = Math.max(0.001, controls.fireflyFade);
+          const fadeAmount =
+            fireflyLife[i] > fadeWindow ? 1 : fireflyLife[i] / fadeWindow;
+          fireflyMix = clamp(fadeAmount * fireflyIntensity[i], 0, 1.15);
+
+          const drift =
+            (0.00008 + fireflyMix * 0.00028) * (0.8 + speechEnergy * 0.6);
+          const invRadius =
+            1 /
+            Math.max(
+              0.001,
+              Math.hypot(positions[ix], positions[ix + 1], positions[ix + 2]),
+            );
+          velocities[ix] +=
+            positions[ix] * invRadius * drift + rand(drift * 2.6);
+          velocities[ix + 1] +=
+            positions[ix + 1] * invRadius * drift + rand(drift * 2.6);
+          velocities[ix + 2] +=
+            positions[ix + 2] * invRadius * drift + rand(drift * 2.6);
+        }
+        // const mix = clamp(
+        //   Math.max(fireflyMix * 0.45, burstMix * 0.35),
+        //   0,
+        //   0.55,
+        // );
+        const mix = clamp(
+          Math.max(fireflyMix * 0.72, burstMix * 0.68),
+          0,
+          0.92,
+        );
+
+        baseColorHSL.lerp(fireflyColorHSL, mix);
+        colorAttr.setXYZ(i, baseColorHSL.r, baseColorHSL.g, baseColorHSL.b);
+      }
+      colorAttr.needsUpdate = true;
+
+      group.rotation.y +=
+        delta * controls.rotationDrift * (0.35 + speechEnergy * 0.25);
+      group.rotation.x = Math.sin(elapsed * 0.05) * 0.04;
+      group.rotation.z = Math.cos(elapsed * 0.04) * 0.03;
+
       const haloHue = wrapHue(
-        controls.baseHue + hueSway + colorResponse * 0.012 + warmShift * 0.35,
+        controls.baseHue +
+          hueSway * 0.9 +
+          colorResponse * 0.018 +
+          warmShift * 0.3,
       );
       const outerHue = wrapHue(
         controls.accentHue -
-          hueSway * 0.7 +
-          colorResponse * 0.018 +
-          warmShift * 0.6,
+          hueSway * 0.45 +
+          colorResponse * 0.024 +
+          warmShift * 0.18,
       );
       const coreTargetHue = wrapHue(
         THREE.MathUtils.lerp(
           controls.baseHue,
           controls.highlightHue,
-          0.25 + eruption * 0.6,
+          0.34 + eruption * 0.66,
         ),
       );
       const coreHue = wrapHue(coreTargetHue + Math.sin(hueTime + 0.8) * 0.01);
-      const particleHue = wrapHue(
-        THREE.MathUtils.lerp(
-          controls.baseHue,
-          controls.highlightHue,
-          eruption * 0.45,
-        ),
-      );
       const sparkHue = wrapHue(
         THREE.MathUtils.lerp(
           controls.highlightHue,
           controls.accentHue,
-          1 - clamp(eruption * 1.4, 0, 1),
+          1 - clamp(eruption * 1.1, 0, 1),
         ),
       );
 
@@ -884,14 +1318,10 @@ export function ThoughtOrbScene({
       );
       coreMaterial.color.setHSL(
         coreHue,
-        0.62 + colorResponse * 0.22,
-        0.8 + eruption * 0.12,
+        0.78 + colorResponse * 0.18,
+        0.75 + eruption * 0.14,
       );
-      particleMaterial.color.setHSL(
-        particleHue,
-        0.82 + colorResponse * 0.14,
-        0.72 + eruption * 0.1,
-      );
+      particleMaterial.color.setRGB(1, 1, 1);
       sparkMaterial.color.setHSL(sparkHue, 0.9, 0.82 + eruption * 0.16);
 
       haloMaterial.opacity =
@@ -955,7 +1385,94 @@ export function ThoughtOrbScene({
         sparkPositions[ix + 2] = spark.base.z;
       }
       sparkPositionAttr.needsUpdate = true;
-      sparkMaterial.opacity = 0.72 + speechEnergy * 0.22;
+      sparkMaterial.opacity =
+        0.72 + speechEnergy * 0.22 + clamp(activeBurstEnergy * 0.08, 0, 0.28);
+
+      const fireflyOverlayPositionAttr = fireflyOverlayGeometry.getAttribute(
+        "position",
+      ) as THREE.BufferAttribute;
+      const fireflyOverlayColorAttr = fireflyOverlayGeometry.getAttribute(
+        "color",
+      ) as THREE.BufferAttribute;
+
+      let activeOverlayFireflies = 0;
+      const overlayColor = new THREE.Color();
+
+      for (let i = 0; i < fireflies.length; i += 1) {
+        const firefly = fireflies[i];
+        const ix = i * 3;
+
+        if (!firefly.active) {
+          fireflyOverlayPositions[ix] = 999;
+          fireflyOverlayPositions[ix + 1] = 999;
+          fireflyOverlayPositions[ix + 2] = 999;
+          continue;
+        }
+
+        firefly.life = Math.max(0, firefly.life - delta);
+        if (firefly.life <= 0.001) {
+          firefly.active = false;
+          fireflyOverlayPositions[ix] = 999;
+          fireflyOverlayPositions[ix + 1] = 999;
+          fireflyOverlayPositions[ix + 2] = 999;
+          continue;
+        }
+
+        activeOverlayFireflies += 1;
+
+        const t = firefly.life / Math.max(0.001, firefly.maxLife);
+        const envelope = t < 0.25 ? t / 0.25 : Math.min(1, t * 1.15);
+        const fade = t;
+
+        const flutter = new THREE.Vector3(
+          Math.sin(elapsed * 7.2 + firefly.flickerOffset + i * 0.37),
+          Math.cos(elapsed * 6.4 + firefly.flickerOffset * 1.4 + i * 0.23),
+          Math.sin(elapsed * 6.8 + firefly.flickerOffset * 0.8 + i * 0.19),
+        ).multiplyScalar(0.0008);
+
+        firefly.velocity.multiplyScalar(0.986);
+        firefly.velocity.add(firefly.drift);
+        firefly.velocity.add(flutter);
+        firefly.position.add(firefly.velocity);
+
+        fireflyOverlayPositions[ix] = firefly.position.x;
+        fireflyOverlayPositions[ix + 1] = firefly.position.y;
+        fireflyOverlayPositions[ix + 2] = firefly.position.z;
+
+        const flicker =
+          0.84 +
+          Math.sin(elapsed * 18 + firefly.flickerOffset + i * 0.71) * 0.16;
+
+        const intensity = clamp(
+          envelope * fade * flicker * firefly.strength,
+          0,
+          1.6,
+        );
+
+        const fireflyHue = wrapHue(
+          highlightFamilyHue +
+            firefly.hueOffset +
+            Math.sin(elapsed * 0.8 + firefly.flickerOffset) * 0.02,
+        );
+        overlayColor.setHSL(
+          fireflyHue,
+          1,
+          clamp(0.56 + intensity * 0.24, 0.4, 0.86),
+        );
+
+        fireflyOverlayColorAttr.setXYZ(
+          i,
+          overlayColor.r * intensity * 1.45,
+          overlayColor.g * intensity * 1.45,
+          overlayColor.b * intensity * 1.45,
+        );
+      }
+
+      fireflyOverlayPositionAttr.needsUpdate = true;
+      fireflyOverlayColorAttr.needsUpdate = true;
+
+      fireflyOverlayMaterial.opacity =
+        0.88 + clamp(activeOverlayFireflies / 24, 0, 0.22);
 
       renderer.render(scene, camera);
     }
@@ -983,6 +1500,9 @@ export function ThoughtOrbScene({
       haloTexture.dispose();
       sparkTexture.dispose();
       fieldTexture.dispose();
+      fireflyOverlayGeometry.dispose();
+      fireflyOverlayMaterial.dispose();
+      fireflyTexture.dispose();
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
       }
@@ -1643,7 +2163,10 @@ function Control({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        style={{ width: "100%", accentColor: `hsl(${hue ?? 200} 100% 75%)` }}
+        style={{
+          width: "100%",
+          ...(hue === undefined ? {} : { accentColor: `hsl(${hue} 100% 75%)` }),
+        }}
       />
     </label>
   );
