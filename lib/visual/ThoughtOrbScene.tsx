@@ -23,6 +23,9 @@ type Controls = {
   hueDrift: number;
   speechColorBoost: number;
   sustainBackoff: number;
+  fireflyChance: number;
+  fireflyHold: number;
+  fireflyFade: number;
 };
 
 interface Props {
@@ -312,6 +315,8 @@ export function ThoughtOrbScene({
     const bases = new Float32Array(particleCount * 3);
     const velocities = new Float32Array(particleCount * 3);
     const radii = new Float32Array(particleCount);
+    const fireflyLife = new Float32Array(particleCount);
+    const fireflyIntensity = new Float32Array(particleCount);
 
     const flowAnchorCount = 18;
     const flowAnchors: FlowAnchor[] = [];
@@ -777,6 +782,48 @@ export function ThoughtOrbScene({
 
       positionAttr.needsUpdate = true;
 
+      const colorAttr = particleGeometry.getAttribute(
+        "color",
+      ) as THREE.BufferAttribute;
+      const fireflyTriggerProb = novelty * controls.fireflyChance;
+      const baseColorHSL = new THREE.Color();
+      const fireflyColorHSL = new THREE.Color();
+      fireflyColorHSL.setHSL(
+        controls.accentHue,
+        0.95,
+        0.88 + signals.attack * 0.08,
+      );
+      for (let i = 0; i < particleCount; i += 1) {
+        if (fireflyLife[i] <= 0) {
+          if (Math.random() < fireflyTriggerProb * delta * 60) {
+            fireflyLife[i] = controls.fireflyHold + controls.fireflyFade;
+            fireflyIntensity[i] = 0.72 + Math.random() * 0.28;
+          }
+        } else {
+          fireflyLife[i] = Math.max(
+            0,
+            fireflyLife[i] - delta * (1 / controls.fireflyFade),
+          );
+        }
+        const ix = i * 3;
+        if (fireflyLife[i] > 0) {
+          const holdPhase = controls.fireflyHold;
+          let fadeAmount = 0;
+          if (fireflyLife[i] > holdPhase) {
+            fadeAmount = 1;
+          } else {
+            fadeAmount = fireflyLife[i] / Math.max(0.001, holdPhase);
+          }
+          const mix = fadeAmount * fireflyIntensity[i];
+          baseColorHSL.setRGB(colors[ix], colors[ix + 1], colors[ix + 2]);
+          baseColorHSL.lerp(fireflyColorHSL, mix);
+          colorAttr.setXYZ(i, baseColorHSL.r, baseColorHSL.g, baseColorHSL.b);
+        } else {
+          colorAttr.setXYZ(i, colors[ix], colors[ix + 1], colors[ix + 2]);
+        }
+      }
+      colorAttr.needsUpdate = true;
+
       group.rotation.y +=
         delta * controls.rotationDrift * (0.35 + speechEnergy * 0.25);
       group.rotation.x = Math.sin(elapsed * 0.05) * 0.04;
@@ -1127,6 +1174,42 @@ export function ThoughtOrbScene({
               forceRender((n) => n + 1);
             }}
           />
+          <Control
+            label="Firefly chance (monitor)"
+            helpText="Probability per-particle for accent-hue firefly sparks during attack/novelty. Higher creates more frequent dramatic color contrast."
+            min={0}
+            max={0.4}
+            step={0.005}
+            value={controlsRef.current.fireflyChance}
+            onChange={(v) => {
+              controlsRef.current.fireflyChance = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Firefly hold (monitor)"
+            helpText="Time (seconds) each firefly remains at full accent intensity before fading. Longer hold makes each firefly event more dramatic."
+            min={0}
+            max={1.2}
+            step={0.01}
+            value={controlsRef.current.fireflyHold}
+            onChange={(v) => {
+              controlsRef.current.fireflyHold = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Firefly fade (monitor)"
+            helpText="Time (seconds) each firefly takes to fade back to base color after hold. Longer fades feel more atmospheric; shorter are punchier."
+            min={0.1}
+            max={2.5}
+            step={0.01}
+            value={controlsRef.current.fireflyFade}
+            onChange={(v) => {
+              controlsRef.current.fireflyFade = v;
+              forceRender((n) => n + 1);
+            }}
+          />
           <div
             style={{
               fontSize: 11,
@@ -1377,6 +1460,7 @@ export function ThoughtOrbScene({
             max={1}
             step={0.001}
             value={controlsRef.current.baseHue}
+            hue={controlsRef.current.baseHue * 360}
             onChange={(v) => {
               controlsRef.current.baseHue = v;
               forceRender((n) => n + 1);
@@ -1389,6 +1473,7 @@ export function ThoughtOrbScene({
             max={1}
             step={0.001}
             value={controlsRef.current.accentHue}
+            hue={controlsRef.current.accentHue * 360}
             onChange={(v) => {
               controlsRef.current.accentHue = v;
               forceRender((n) => n + 1);
@@ -1401,6 +1486,7 @@ export function ThoughtOrbScene({
             max={1}
             step={0.001}
             value={controlsRef.current.highlightHue}
+            hue={controlsRef.current.highlightHue * 360}
             onChange={(v) => {
               controlsRef.current.highlightHue = v;
               forceRender((n) => n + 1);
@@ -1427,6 +1513,42 @@ export function ThoughtOrbScene({
             value={controlsRef.current.speechColorBoost}
             onChange={(v) => {
               controlsRef.current.speechColorBoost = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Firefly chance"
+            helpText="Probability per-particle for accent-hue firefly sparks during attack/novelty. Higher creates more frequent dramatic color contrast."
+            min={0}
+            max={0.4}
+            step={0.005}
+            value={controlsRef.current.fireflyChance}
+            onChange={(v) => {
+              controlsRef.current.fireflyChance = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Firefly hold"
+            helpText="Time (seconds) each firefly remains at full accent intensity before fading. Longer hold makes each firefly event more dramatic."
+            min={0}
+            max={1.2}
+            step={0.01}
+            value={controlsRef.current.fireflyHold}
+            onChange={(v) => {
+              controlsRef.current.fireflyHold = v;
+              forceRender((n) => n + 1);
+            }}
+          />
+          <Control
+            label="Firefly fade"
+            helpText="Time (seconds) each firefly takes to fade back to base color after hold. Longer fades feel more atmospheric; shorter are punchier."
+            min={0.1}
+            max={2.5}
+            step={0.01}
+            value={controlsRef.current.fireflyFade}
+            onChange={(v) => {
+              controlsRef.current.fireflyFade = v;
               forceRender((n) => n + 1);
             }}
           />
@@ -1464,6 +1586,7 @@ interface ControlProps {
   step: number;
   value: number;
   onChange: (value: number) => void;
+  hue?: number;
 }
 
 function Control({
@@ -1473,6 +1596,7 @@ function Control({
   max,
   step,
   value,
+  hue,
   onChange,
 }: ControlProps) {
   return (
@@ -1519,7 +1643,7 @@ function Control({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        style={{ width: "100%" }}
+        style={{ width: "100%", accentColor: `hsl(${hue ?? 200} 100% 75%)` }}
       />
     </label>
   );

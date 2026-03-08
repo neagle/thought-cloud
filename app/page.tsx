@@ -28,6 +28,9 @@ export default function Page() {
       hueDrift: 0.018,
       speechColorBoost: 1,
       sustainBackoff: 0.5,
+      fireflyChance: 0.08,
+      fireflyHold: 0.14,
+      fireflyFade: 0.64,
     }),
     [],
   );
