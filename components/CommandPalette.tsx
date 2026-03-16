@@ -36,15 +36,6 @@ export function CommandPalette({
 
   const items: Array<{ label: string; action: () => void; active?: boolean }> =
     [
-      channel === "voicemail"
-        ? {
-            label: "Switch to presence channel",
-            action: () => onSetChannel("presence"),
-          }
-        : {
-            label: "Switch to voicemail channel",
-            action: () => onSetChannel("voicemail"),
-          },
       {
         label: isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
         action: onToggleFullscreen,
@@ -52,9 +43,6 @@ export function CommandPalette({
       kioskMode
         ? { label: "Exit kiosk mode (show controls)", action: onExitKiosk }
         : { label: "Enter kiosk mode (hide controls)", action: onEnterKiosk },
-      ...(!kioskMode
-        ? [{ label: "Open tuning panel", action: onOpenPanel }]
-        : []),
     ];
 
   return (
