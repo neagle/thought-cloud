@@ -60,6 +60,13 @@ export class AudioAnalyzer {
     }
   }
 
+  getTimeDomainData(): Float32Array | null {
+    if (!this.analyser) return null;
+    const buf = new Float32Array(this.analyser.fftSize);
+    this.analyser.getFloatTimeDomainData(buf);
+    return buf;
+  }
+
   getSignals(): AudioSignals {
     if (!this.analyser || !this.dataArray || !this.audioContext) {
       return { level: 0, presence: 0, attack: 0, brightness: 0, speaking: 0 };

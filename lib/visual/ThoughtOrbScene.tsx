@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { AudioAnalyzer } from "@/lib/audio/AudioAnalyzer";
 
-type Controls = {
+export type Controls = {
   masterIntensity: number;
   idleDrift: number;
   agitationGain: number;
@@ -33,6 +33,10 @@ interface Props {
   panelOpen: boolean;
   setPanelOpen: (open: boolean) => void;
   initialControls: Controls;
+  audioAnalyzer: AudioAnalyzer | null;
+  kioskMode: boolean;
+  externalControls?: Controls;
+  onControlsChange?: (c: Controls) => void;
 }
 
 type Spark = {
@@ -218,11 +222,14 @@ export function ThoughtOrbScene({
   panelOpen,
   setPanelOpen,
   initialControls,
+  audioAnalyzer,
+  kioskMode,
+  externalControls,
+  onControlsChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<Controls>(initialControls);
-  const audioRef = useRef<AudioAnalyzer | null>(null);
-  const startedRef = useRef(false);
+  const audioRef = useRef<AudioAnalyzer | null>(audioAnalyzer);
   const monitorCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const monitorHistoryRef =
     useRef<Record<MonitorSignalKey, number[]>>(makeMonitorHistory());
@@ -237,9 +244,20 @@ export function ThoughtOrbScene({
     agitation: 0,
   });
   const [error, setError] = useState<string | null>(null);
+  void setError; // error surfaced via audioError in page.tsx; kept for potential future use
   const [monitorOpen, setMonitorOpen] = useState(true);
   const [, forceRender] = useState(0);
   const [, forceMonitorRender] = useState(0);
+
+  useEffect(() => {
+    audioRef.current = audioAnalyzer;
+  }, [audioAnalyzer]);
+
+  useEffect(() => {
+    if (!externalControls) return;
+    Object.assign(controlsRef.current, externalControls);
+    forceRender((n) => n + 1);
+  }, [externalControls]);
 
   useEffect(() => {
     if (!monitorOpen) return;
@@ -1509,26 +1527,14 @@ export function ThoughtOrbScene({
     };
   }, []);
 
-  useEffect(() => {
-    if (!audioStarted || startedRef.current) return;
-    startedRef.current = true;
-    const analyzer = new AudioAnalyzer();
-    audioRef.current = analyzer;
-    analyzer.start().catch((err: unknown) => {
-      const message =
-        err instanceof Error ? err.message : "Could not start audio input.";
-      setError(message);
-      startedRef.current = false;
-    });
-  }, [audioStarted]);
-
   return (
     <>
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
 
-      <button
-        type="button"
-        onClick={() => setPanelOpen(!panelOpen)}
+      {!kioskMode ? (
+        <button
+          type="button"
+          onClick={() => setPanelOpen(!panelOpen)}
         style={{
           position: "absolute",
           top: 14,
@@ -1542,13 +1548,15 @@ export function ThoughtOrbScene({
           backdropFilter: "blur(10px)",
           cursor: "pointer",
         }}
-      >
-        {panelOpen ? "Hide controls" : "Show controls"}
-      </button>
+        >
+          {panelOpen ? "Hide controls" : "Show controls"}
+        </button>
+      ) : null}
 
-      <button
-        type="button"
-        onClick={() => setMonitorOpen((v) => !v)}
+      {!kioskMode ? (
+        <button
+          type="button"
+          onClick={() => setMonitorOpen((v) => !v)}
         style={{
           position: "absolute",
           top: 58,
@@ -1563,11 +1571,12 @@ export function ThoughtOrbScene({
           cursor: "pointer",
           fontSize: 12,
         }}
-      >
-        {monitorOpen ? "Hide audio monitor" : "Show audio monitor"}
-      </button>
+        >
+          {monitorOpen ? "Hide audio monitor" : "Show audio monitor"}
+        </button>
+      ) : null}
 
-      {monitorOpen ? (
+      {!kioskMode && monitorOpen ? (
         <div
           style={{
             position: "absolute",
@@ -1656,6 +1665,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.speechBias = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1668,6 +1678,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.agitationGain = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1680,6 +1691,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.sparkThreshold = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1692,6 +1704,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.sustainBackoff = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1704,6 +1717,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.fireflyChance = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1716,6 +1730,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.fireflyHold = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1728,6 +1743,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.fireflyFade = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <div
@@ -1745,7 +1761,7 @@ export function ThoughtOrbScene({
         </div>
       ) : null}
 
-      {panelOpen ? (
+      {!kioskMode && panelOpen ? (
         <div
           style={{
             position: "absolute",
@@ -1784,6 +1800,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.masterIntensity = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1796,6 +1813,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.idleDrift = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1808,6 +1826,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.agitationGain = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1820,6 +1839,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.speechBias = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1832,6 +1852,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.sustainBackoff = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1844,6 +1865,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.flowSmoothing = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1856,6 +1878,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.cohesion = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1868,6 +1891,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.sparkThreshold = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1880,6 +1904,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.sparkBurstSize = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1892,6 +1917,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.haloStrength = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1904,6 +1930,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.coreStrength = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1916,6 +1943,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.bloomBias = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1928,6 +1956,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.rotationDrift = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <div
@@ -1984,6 +2013,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.baseHue = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -1997,6 +2027,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.accentHue = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -2010,6 +2041,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.highlightHue = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -2022,6 +2054,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.hueDrift = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -2034,6 +2067,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.speechColorBoost = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -2046,6 +2080,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.fireflyChance = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -2058,6 +2093,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.fireflyHold = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
           <Control
@@ -2070,6 +2106,7 @@ export function ThoughtOrbScene({
             onChange={(v) => {
               controlsRef.current.fireflyFade = v;
               forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
             }}
           />
         </div>
