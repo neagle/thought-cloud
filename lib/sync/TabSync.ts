@@ -1,12 +1,12 @@
-import type { Mode } from "@/types";
+import type { Channel } from "@/types";
 
 export type SyncPayload =
-  | { type: "mode"; mode: Mode }
+  | { type: "channel"; channel: Channel }
   | { type: "controls"; scope: "presence" | "voicemail"; data: Record<string, number> }
   | { type: "request-state" }
   | {
       type: "state-response";
-      mode: Mode;
+      channel: Channel;
       controls: {
         presence: Record<string, number>;
         voicemail: Record<string, number>;

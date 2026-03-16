@@ -1,29 +1,29 @@
 "use client";
 
 import { useEffect } from "react";
-import type { Mode } from "@/types";
+import type { Channel } from "@/types";
 
 interface Props {
-  mode: Mode;
+  channel: Channel;
   kioskMode: boolean;
   isFullscreen: boolean;
   onClose: () => void;
   onExitKiosk: () => void;
   onEnterKiosk: () => void;
   onToggleFullscreen: () => void;
-  onSetMode: (mode: Mode) => void;
+  onSetChannel: (channel: Channel) => void;
   onOpenPanel: () => void;
 }
 
 export function CommandPalette({
-  mode,
+  channel,
   kioskMode,
   isFullscreen,
   onClose,
   onExitKiosk,
   onEnterKiosk,
   onToggleFullscreen,
-  onSetMode,
+  onSetChannel,
   onOpenPanel,
 }: Props) {
   useEffect(() => {
@@ -36,14 +36,14 @@ export function CommandPalette({
 
   const items: Array<{ label: string; action: () => void; active?: boolean }> =
     [
-      mode === "voicemail"
+      channel === "voicemail"
         ? {
-            label: "Switch to presence mode",
-            action: () => onSetMode("presence"),
+            label: "Switch to presence channel",
+            action: () => onSetChannel("presence"),
           }
         : {
-            label: "Switch to voicemail mode",
-            action: () => onSetMode("voicemail"),
+            label: "Switch to voicemail channel",
+            action: () => onSetChannel("voicemail"),
           },
       {
         label: isFullscreen ? "Exit fullscreen" : "Enter fullscreen",

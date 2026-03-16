@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AudioAnalyzer } from "@/lib/audio/AudioAnalyzer";
+import { PresetsPanel } from "@/components/PresetsPanel";
+import type { Channel } from "@/types";
 
 export type VoicemailControls = {
   hue: number;
@@ -25,6 +27,7 @@ interface Props {
   audioAnalyzer: AudioAnalyzer | null;
   visible: boolean;
   kioskMode: boolean;
+  channel: Channel;
   externalControls?: VoicemailControls;
   onControlsChange?: (c: VoicemailControls) => void;
 }
@@ -69,7 +72,7 @@ function Control({ label, min, max, step, value, onChange, hue }: ControlProps) 
   );
 }
 
-export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, externalControls, onControlsChange }: Props) {
+export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, channel, externalControls, onControlsChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number>(0);
   const analyzerRef = useRef<AudioAnalyzer | null>(audioAnalyzer);
@@ -307,6 +310,15 @@ export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, externa
             hue={c.hue}
             onChange={(v) => {
               controlsRef.current.glowOpacity = v;
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+            }}
+          />
+          <PresetsPanel
+            channel={channel}
+            getControls={() => controlsRef.current as unknown as Record<string, number>}
+            onLoad={(data) => {
+              Object.assign(controlsRef.current, data);
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}

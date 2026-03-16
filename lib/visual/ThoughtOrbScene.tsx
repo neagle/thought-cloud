@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { AudioAnalyzer } from "@/lib/audio/AudioAnalyzer";
+import { PresetsPanel } from "@/components/PresetsPanel";
+import type { Channel } from "@/types";
 
 export type Controls = {
   masterIntensity: number;
@@ -35,8 +37,10 @@ interface Props {
   initialControls: Controls;
   audioAnalyzer: AudioAnalyzer | null;
   kioskMode: boolean;
+  channel: Channel;
   externalControls?: Controls;
   onControlsChange?: (c: Controls) => void;
+  onLoadPreset?: (data: Record<string, number>) => void;
 }
 
 type Spark = {
@@ -224,8 +228,10 @@ export function ThoughtOrbScene({
   initialControls,
   audioAnalyzer,
   kioskMode,
+  channel,
   externalControls,
   onControlsChange,
+  onLoadPreset,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<Controls>(initialControls);
@@ -2107,6 +2113,16 @@ export function ThoughtOrbScene({
               controlsRef.current.fireflyFade = v;
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
+            }}
+          />
+          <PresetsPanel
+            channel={channel}
+            getControls={() => controlsRef.current as unknown as Record<string, number>}
+            onLoad={(data) => {
+              Object.assign(controlsRef.current, data);
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+              onLoadPreset?.(data);
             }}
           />
         </div>

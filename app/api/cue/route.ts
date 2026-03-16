@@ -1,30 +1,28 @@
-import { kv } from "@vercel/kv";
-import type { Mode } from "@/types";
+import { Redis } from "@upstash/redis";
+import type { Channel } from "@/types";
+import { CHANNELS } from "@/types";
 
-const VALID_MODES: Mode[] = ["presence", "voicemail"];
+const redis = Redis.fromEnv();
 
 export async function GET() {
   try {
-    const mode = (await kv.get<Mode>("currentMode")) ?? "presence";
-    return Response.json({ mode });
+    const channel = (await redis.get<Channel>("channel")) ?? "presence";
+    return Response.json({ channel });
   } catch {
-    // KV not configured — return 503 so clients skip this poll cycle
-    // rather than incorrectly snapping back to the default "presence" value
-    return Response.json({ mode: "presence" }, { status: 503 });
+    return Response.json({ channel: "presence" }, { status: 503 });
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { mode?: unknown };
-    const mode = body.mode;
-    if (!VALID_MODES.includes(mode as Mode)) {
-      return Response.json({ error: "Invalid mode" }, { status: 400 });
+    const body = (await req.json()) as { channel?: unknown };
+    const channel = body.channel;
+    if (!CHANNELS.includes(channel as Channel)) {
+      return Response.json({ error: "Invalid channel" }, { status: 400 });
     }
-    await kv.set("currentMode", mode);
+    await redis.set("channel", channel);
     return Response.json({ ok: true });
   } catch {
-    // KV not configured — acknowledge without persisting
     return Response.json({ ok: true });
   }
 }

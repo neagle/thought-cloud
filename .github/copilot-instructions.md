@@ -20,14 +20,18 @@ There are no tests. `npm run lint` requires ESLint to be configured (not yet set
 
 ```
 app/page.tsx                    → Root client component; owns all state; manages AudioAnalyzer
-app/api/cue/route.ts            → GET/POST mode cue endpoint (Vercel KV-backed; for QLab)
+app/api/cue/route.ts            → GET/POST channel cue endpoint (Upstash Redis-backed; for QLab)
+app/api/controls/route.ts       → GET/POST controls persistence (Upstash Redis-backed)
+app/api/presets/route.ts        → GET/POST/DELETE named presets per channel (Upstash Redis-backed)
 components/StartOverlay.tsx     → Tap-to-start overlay (required by iPad Safari audio policy)
-components/CommandPalette.tsx   → Cmd+K overlay: mode switch, fullscreen, kiosk toggle
+components/CommandPalette.tsx   → Cmd+K overlay: channel switch, fullscreen, kiosk toggle
+components/ChannelSwitcher.tsx  → Joined button group for switching channels (bottom-center)
+components/PresetsPanel.tsx     → Save/load/delete named control presets; embedded in each controls panel
 lib/audio/AudioAnalyzer.ts      → Web Audio API: mic → FFT → AudioSignals + time-domain data
 lib/visual/ThoughtOrbScene.tsx  → Three.js scene (~2200 lines); the orb visualization
-lib/visual/OscilloscopeOverlay.tsx → Canvas-based waveform for voicemail mode (amber/gold)
+lib/visual/OscilloscopeOverlay.tsx → Canvas-based waveform for voicemail channel (amber/gold)
 lib/sync/TabSync.ts             → BroadcastChannel cross-tab state sync
-types/index.ts                  → Shared types (Mode)
+types/index.ts                  → Shared types: Channel, CHANNELS array
 ```
 
 **Data flow:**
@@ -35,19 +39,23 @@ types/index.ts                  → Shared types (Mode)
 Mic → AudioAnalyzer (owned by page.tsx) → passed as prop to ThoughtOrbScene + OscilloscopeOverlay
 ```
 
-**Mode system:** `Mode = 'presence' | 'voicemail'`. Switching fades the orb out and oscilloscope in over 1.5s via CSS transitions on wrapper divs in page.tsx.
+**Channel vs kiosk/mode — important distinction:**
+- **Channel** (`Channel = 'presence' | 'voicemail'`) — what's being shown to the audience. Synced globally across all tabs via BroadcastChannel and persisted to Upstash. QLab controls this via `POST /api/cue`.
+- **Station state** (`kioskMode`, `panelOpen`, fullscreen) — per-instance view settings. Never broadcast. Each tab manages its own independently.
 
-**State owned by page.tsx:** `mode`, `kioskMode`, `audioAnalyzer`, `panelOpen`. ThoughtOrbScene and OscilloscopeOverlay receive these as props.
+**Cross-tab sync (BroadcastChannel):** Channel changes and all slider control values sync instantly across tabs. New tabs do a hello handshake; if no sibling responds within 150ms they fall back to loading from Upstash KV.
 
-**Cross-tab sync (BroadcastChannel):** Any tab changing mode or kiosk broadcasts to siblings via `TabSync`. New tabs do a hello handshake to pull current state.
+**Controls persistence:** Slider changes are debounced 1.5s then saved to Upstash via `POST /api/controls`. Loaded from KV on page mount (after BroadcastChannel handshake timeout).
 
-**QLab integration:** `POST /api/cue` with `{ "mode": "voicemail" }` (Vercel KV required — provision via Vercel dashboard). App polls `GET /api/cue` every 500ms; first tab to detect a change re-broadcasts via BroadcastChannel.
+**Presets:** Named snapshots of control values, stored per-channel in Upstash. Accessible via ▸ Presets section at the bottom of each channel's controls panel.
+
+**QLab integration:** `POST /api/cue` with `{ "channel": "voicemail" }`. Requires Upstash Redis — provision via Vercel dashboard (Storage → Connect Database → Upstash). App polls `GET /api/cue` every 500ms; first tab to detect a change re-broadcasts via BroadcastChannel.
 
 **AudioAnalyzer is lifted to page.tsx** and passed as a prop (`audioAnalyzer: AudioAnalyzer | null`) to both visual components. `ThoughtOrbScene` keeps an internal `audioRef` synced via `useEffect`.
 
-**Controls type is exported** from `ThoughtOrbScene.tsx` (`export type Controls`).
+**Controls type is exported** from `ThoughtOrbScene.tsx` (`export type Controls`). `VoicemailControls` exported from `OscilloscopeOverlay.tsx`.
 
-**`ThoughtOrbScene` accepts `audioAnalyzer` and `kioskMode` props.** When `kioskMode=true`, all UI buttons and panels are hidden — only the Three.js canvas renders.
+**`ThoughtOrbScene` accepts `audioAnalyzer`, `kioskMode`, `channel`, `externalControls`, `onControlsChange`, `onLoadPreset` props.** When `kioskMode=true`, all UI buttons and panels are hidden — only the Three.js canvas renders.
 
 **Keyboard shortcuts:** `F` toggles fullscreen; `Cmd+K` opens/closes CommandPalette; `Escape` closes palette and natively exits fullscreen.
 

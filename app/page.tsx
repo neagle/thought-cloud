@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StartOverlay } from "@/components/StartOverlay";
 import { CommandPalette } from "@/components/CommandPalette";
+import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { ThoughtOrbScene } from "@/lib/visual/ThoughtOrbScene";
 import type { Controls } from "@/lib/visual/ThoughtOrbScene";
 import { OscilloscopeOverlay } from "@/lib/visual/OscilloscopeOverlay";
 import type { VoicemailControls } from "@/lib/visual/OscilloscopeOverlay";
 import { AudioAnalyzer } from "@/lib/audio/AudioAnalyzer";
 import { TabSync } from "@/lib/sync/TabSync";
-import type { Mode } from "@/types";
+import type { Channel } from "@/types";
 
 const INITIAL_PRESENCE_CONTROLS: Controls = {
   masterIntensity: 1.3,
@@ -49,84 +50,101 @@ export default function Page() {
   const [audioAnalyzer, setAudioAnalyzer] = useState<AudioAnalyzer | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
-  const [mode, setModeState] = useState<Mode>("presence");
-  const [kioskMode, setKioskModeState] = useState(false);
+  const [channel, setChannelState] = useState<Channel>("presence");
+  const [kioskMode, setKioskMode] = useState(false);
   const [presenceControls, setPresenceControls] = useState<Controls>(INITIAL_PRESENCE_CONTROLS);
   const [voicemailControls, setVoicemailControls] = useState<VoicemailControls>(INITIAL_VOICEMAIL_CONTROLS);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const modeRef = useRef<Mode>("presence");
+  const channelRef = useRef<Channel>("presence");
   const syncRef = useRef<TabSync | null>(null);
-  const lastServerModeRef = useRef<Mode>("presence");
+  const lastServerChannelRef = useRef<Channel>("presence");
   const audioStartedRef = useRef(false);
   const presenceControlsRef = useRef<Controls>(INITIAL_PRESENCE_CONTROLS);
   const voicemailControlsRef = useRef<VoicemailControls>(INITIAL_VOICEMAIL_CONTROLS);
+  // Debounce timers for KV persistence
+  const presenceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voicemailSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function setMode(m: Mode) {
-    setModeState(m);
-    modeRef.current = m;
+  function setChannel(c: Channel) {
+    setChannelState(c);
+    channelRef.current = c;
   }
 
-  function setKioskMode(k: boolean) {
-    setKioskModeState(k);
-  }
-
-  // Read ?kiosk=true from URL on mount
+  // Read ?kiosk=true from URL on mount + fetch persisted state from KV
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("kiosk") === "true") setKioskMode(true);
-  }, []);
 
-  // Audio startup (lifted from ThoughtOrbScene)
-  useEffect(() => {
-    if (!audioStarted || audioStartedRef.current) return;
-    audioStartedRef.current = true;
-    const analyzer = new AudioAnalyzer();
-    analyzer.start().then(() => setAudioAnalyzer(analyzer)).catch((err: unknown) => {
-      const message =
-        err instanceof Error ? err.message : "Could not start audio input.";
-      setAudioError(message);
-      audioStartedRef.current = false;
-    });
-  }, [audioStarted]);
+    // Load persisted controls from KV (only if no sibling responds first)
+    let siblingResponded = false;
+    const timeout = setTimeout(async () => {
+      if (siblingResponded) return;
+      try {
+        const [cueRes, ctrlRes] = await Promise.all([
+          fetch("/api/cue"),
+          fetch("/api/controls"),
+        ]);
+        if (cueRes.ok) {
+          const { channel: savedChannel } = (await cueRes.json()) as { channel: Channel };
+          setChannel(savedChannel);
+          lastServerChannelRef.current = savedChannel;
+        }
+        if (ctrlRes.ok) {
+          const { presence, voicemail } = (await ctrlRes.json()) as {
+            presence: Record<string, number> | null;
+            voicemail: Record<string, number> | null;
+          };
+          if (presence) {
+            const c = presence as unknown as Controls;
+            presenceControlsRef.current = c;
+            setPresenceControls(c);
+          }
+          if (voicemail) {
+            const c = voicemail as unknown as VoicemailControls;
+            voicemailControlsRef.current = c;
+            setVoicemailControls(c);
+          }
+        }
+      } catch {}
+    }, 150); // Wait briefly for BroadcastChannel sibling response first
 
-  // BroadcastChannel cross-tab sync
-  useEffect(() => {
+    // Flag to skip KV fetch if a sibling responded
     const sync = new TabSync();
     syncRef.current = sync;
-
-    // Ask siblings for current state
     sync.broadcast({ type: "request-state" });
 
     const unsub = sync.onMessage((payload) => {
-      if (payload.type === "mode") {
-        setMode(payload.mode);
-        lastServerModeRef.current = payload.mode;
+      if (payload.type === "channel") {
+        setChannel(payload.channel);
+        lastServerChannelRef.current = payload.channel;
       } else if (payload.type === "controls") {
         if (payload.scope === "presence") {
-          const c = payload.data as Controls;
+          const c = payload.data as unknown as Controls;
           presenceControlsRef.current = c;
           setPresenceControls(c);
         } else if (payload.scope === "voicemail") {
-          const c = payload.data as VoicemailControls;
+          const c = payload.data as unknown as VoicemailControls;
           voicemailControlsRef.current = c;
           setVoicemailControls(c);
         }
       } else if (payload.type === "request-state") {
         sync.broadcast({
           type: "state-response",
-          mode: modeRef.current,
+          channel: channelRef.current,
           controls: {
-            presence: presenceControlsRef.current as Record<string, number>,
-            voicemail: voicemailControlsRef.current as Record<string, number>,
+            presence: presenceControlsRef.current as unknown as Record<string, number>,
+            voicemail: voicemailControlsRef.current as unknown as Record<string, number>,
           },
         });
       } else if (payload.type === "state-response") {
-        setMode(payload.mode);
-        lastServerModeRef.current = payload.mode;
-        const pc = payload.controls.presence as Controls;
-        const vc = payload.controls.voicemail as VoicemailControls;
+        siblingResponded = true;
+        clearTimeout(timeout);
+        setChannel(payload.channel);
+        lastServerChannelRef.current = payload.channel;
+        const pc = payload.controls.presence as unknown as Controls;
+        const vc = payload.controls.voicemail as unknown as VoicemailControls;
         presenceControlsRef.current = pc;
         voicemailControlsRef.current = vc;
         setPresenceControls(pc);
@@ -135,26 +153,37 @@ export default function Page() {
     });
 
     return () => {
+      clearTimeout(timeout);
       unsub();
       sync.destroy();
     };
   }, []);
 
-  // Poll /api/cue for QLab cues
+  // Audio startup
+  useEffect(() => {
+    if (!audioStarted || audioStartedRef.current) return;
+    audioStartedRef.current = true;
+    const analyzer = new AudioAnalyzer();
+    analyzer.start().then(() => setAudioAnalyzer(analyzer)).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : "Could not start audio input.";
+      setAudioError(message);
+      audioStartedRef.current = false;
+    });
+  }, [audioStarted]);
+
+  // Poll /api/cue every 500ms for QLab-triggered channel changes
   useEffect(() => {
     const interval = window.setInterval(async () => {
       try {
         const res = await fetch("/api/cue");
         if (!res.ok) return;
-        const { mode: serverMode } = (await res.json()) as { mode: Mode };
-        if (serverMode !== lastServerModeRef.current) {
-          lastServerModeRef.current = serverMode;
-          setMode(serverMode);
-          syncRef.current?.broadcast({ type: "mode", mode: serverMode });
+        const { channel: serverChannel } = (await res.json()) as { channel: Channel };
+        if (serverChannel !== lastServerChannelRef.current) {
+          lastServerChannelRef.current = serverChannel;
+          setChannel(serverChannel);
+          syncRef.current?.broadcast({ type: "channel", channel: serverChannel });
         }
-      } catch {
-        // Network error or KV not configured — stay silent
-      }
+      } catch {}
     }, 500);
     return () => window.clearInterval(interval);
   }, []);
@@ -171,27 +200,20 @@ export default function Page() {
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      // F — toggle fullscreen (when not typing in an input)
       if (
         (e.key === "f" || e.key === "F") &&
-        !e.metaKey &&
-        !e.ctrlKey &&
-        !e.altKey &&
+        !e.metaKey && !e.ctrlKey && !e.altKey &&
         !(e.target instanceof HTMLInputElement)
       ) {
         toggleFullscreen();
         return;
       }
-      // Cmd+K / Ctrl+K — command palette
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setPaletteOpen((v) => !v);
         return;
       }
-      // Escape — close palette
-      if (e.key === "Escape") {
-        setPaletteOpen(false);
-      }
+      if (e.key === "Escape") setPaletteOpen(false);
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -205,42 +227,55 @@ export default function Page() {
     }
   }
 
-  function handleSetMode(m: Mode) {
-    setMode(m);
-    lastServerModeRef.current = m;
-    syncRef.current?.broadcast({ type: "mode", mode: m });
+  function handleSetChannel(c: Channel) {
+    setChannel(c);
+    lastServerChannelRef.current = c;
+    syncRef.current?.broadcast({ type: "channel", channel: c });
     fetch("/api/cue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: m }),
+      body: JSON.stringify({ channel: c }),
     }).catch(() => {});
   }
 
-  function handleSetKiosk(k: boolean) {
-    setKioskMode(k);
-  }
-
-  function handlePresenceControlsChange(c: Controls) {
+  const handlePresenceControlsChange = useCallback((c: Controls) => {
     presenceControlsRef.current = c;
     setPresenceControls({ ...c });
     syncRef.current?.broadcast({
       type: "controls",
       scope: "presence",
-      data: c as Record<string, number>,
+      data: c as unknown as Record<string, number>,
     });
-  }
+    // Debounced KV persist
+    if (presenceSaveTimerRef.current) clearTimeout(presenceSaveTimerRef.current);
+    presenceSaveTimerRef.current = setTimeout(() => {
+      fetch("/api/controls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "presence", data: c }),
+      }).catch(() => {});
+    }, 1500);
+  }, []);
 
-  function handleVoicemailControlsChange(c: VoicemailControls) {
+  const handleVoicemailControlsChange = useCallback((c: VoicemailControls) => {
     voicemailControlsRef.current = c;
     setVoicemailControls({ ...c });
     syncRef.current?.broadcast({
       type: "controls",
       scope: "voicemail",
-      data: c as Record<string, number>,
+      data: c as unknown as Record<string, number>,
     });
-  }
+    if (voicemailSaveTimerRef.current) clearTimeout(voicemailSaveTimerRef.current);
+    voicemailSaveTimerRef.current = setTimeout(() => {
+      fetch("/api/controls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "voicemail", data: c }),
+      }).catch(() => {});
+    }, 1500);
+  }, []);
 
-  const inVoicemail = mode === "voicemail";
+  const inVoicemail = channel === "voicemail";
 
   return (
     <main
@@ -251,7 +286,7 @@ export default function Page() {
         background: "#000",
       }}
     >
-      {/* Three.js orb — fades out in voicemail mode */}
+      {/* Three.js orb — fades out in voicemail channel */}
       <div
         style={{
           position: "absolute",
@@ -267,19 +302,26 @@ export default function Page() {
           initialControls={INITIAL_PRESENCE_CONTROLS}
           audioAnalyzer={audioAnalyzer}
           kioskMode={kioskMode}
+          channel="presence"
           externalControls={presenceControls}
           onControlsChange={handlePresenceControlsChange}
         />
       </div>
 
-      {/* Oscilloscope — fades in in voicemail mode */}
+      {/* Oscilloscope — fades in in voicemail channel */}
       <OscilloscopeOverlay
         audioAnalyzer={audioAnalyzer}
         visible={inVoicemail}
         kioskMode={kioskMode}
+        channel="voicemail"
         externalControls={voicemailControls}
         onControlsChange={handleVoicemailControlsChange}
       />
+
+      {/* Channel switcher — hidden in kiosk mode */}
+      {!kioskMode ? (
+        <ChannelSwitcher channel={channel} onSetChannel={handleSetChannel} />
+      ) : null}
 
       {/* Start overlay */}
       {!audioStarted ? (
@@ -310,20 +352,21 @@ export default function Page() {
       {/* Command palette (Cmd+K) */}
       {paletteOpen ? (
         <CommandPalette
-          mode={mode}
+          channel={channel}
           kioskMode={kioskMode}
           isFullscreen={isFullscreen}
           onClose={() => setPaletteOpen(false)}
-          onExitKiosk={() => handleSetKiosk(false)}
-          onEnterKiosk={() => handleSetKiosk(true)}
+          onExitKiosk={() => setKioskMode(false)}
+          onEnterKiosk={() => setKioskMode(true)}
           onToggleFullscreen={toggleFullscreen}
-          onSetMode={handleSetMode}
+          onSetChannel={handleSetChannel}
           onOpenPanel={() => {
             setPanelOpen(true);
-            if (kioskMode) handleSetKiosk(false);
+            if (kioskMode) setKioskMode(false);
           }}
         />
       ) : null}
     </main>
   );
 }
+
