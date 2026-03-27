@@ -19,6 +19,8 @@ export type Controls = {
   speechBias: number;
   flowSmoothing: number;
   cohesion: number;
+  turbulence: number;
+  saturation: number;
   baseHue: number;
   accentHue: number;
   highlightHue: number;
@@ -757,11 +759,12 @@ export function ThoughtOrbScene({
       elapsed: number,
       agitation: number,
       speechEnergy: number,
+      turbulence: number,
     ) {
-      const fieldStrength = 0.16 + agitation * 0.12 + speechEnergy * 0.08;
+      const fieldStrength = 0.16 + agitation * 0.12 * turbulence + speechEnergy * 0.08;
       for (let i = 0; i < flowAnchors.length; i += 1) {
         const anchor = flowAnchors[i];
-        const wobble = 0.12 + speechEnergy * 0.05;
+        const wobble = (0.04 + turbulence * 0.08) + speechEnergy * 0.05;
         anchor.current.set(
           anchor.base.x +
             Math.sin(elapsed * 0.08 + anchor.phase) * wobble +
@@ -883,7 +886,7 @@ export function ThoughtOrbScene({
       const thoughtBias = signals.speaking * 0.1 + signals.attack * 0.08;
       const damping = clamp(
         0.925 + controls.flowSmoothing * 0.055 - adaptiveResponse * 0.06,
-        0.84,
+        0.75 + controls.flowSmoothing * 0.09,
         0.985,
       );
       const fieldScale =
@@ -923,7 +926,7 @@ export function ThoughtOrbScene({
       pushMonitorSample(monitorHistory, "adaptive", adaptiveResponse);
       pushMonitorSample(monitorHistory, "agitation", agitation / 2.7);
 
-      updateFlowAnchors(elapsed, agitation, speechEnergy);
+      updateFlowAnchors(elapsed, agitation, speechEnergy, controls.turbulence);
 
       const positionAttr = particleGeometry.getAttribute(
         "position",
@@ -1245,8 +1248,8 @@ export function ThoughtOrbScene({
             Math.sin(seed * 6.8 + elapsed * 0.6) * 0.02,
         );
         const particleSat = clamp(
-          0.78 + orbitalBand * 0.2 + colorResponse * 0.22,
-          0.6,
+          (0.78 + orbitalBand * 0.2 + colorResponse * 0.22) * controls.saturation,
+          0,
           1,
         );
         const particleLight = clamp(
@@ -1370,17 +1373,17 @@ export function ThoughtOrbScene({
 
       haloMaterial.color.setHSL(
         haloHue,
-        0.84 + colorResponse * 0.08,
+        clamp((0.84 + colorResponse * 0.08) * controls.saturation, 0, 1),
         0.6 + colorResponse * 0.06,
       );
       outerHaloMaterial.color.setHSL(
         outerHue,
-        0.72 + colorResponse * 0.14,
+        clamp((0.72 + colorResponse * 0.14) * controls.saturation, 0, 1),
         0.56 + eruption * 0.12,
       );
       coreMaterial.color.setHSL(
         coreHue,
-        0.78 + colorResponse * 0.18,
+        clamp((0.78 + colorResponse * 0.18) * controls.saturation, 0, 1),
         0.75 + eruption * 0.14,
       );
       particleMaterial.color.setRGB(1, 1, 1);
@@ -1401,7 +1404,7 @@ export function ThoughtOrbScene({
           colorResponse * 0.08) *
         controls.coreStrength;
 
-      halo.scale.setScalar(7.6 * haloPulse * (1 + controls.bloomBias * 0.08));
+      halo.scale.setScalar(7.6 * haloPulse * (1 + controls.bloomBias * 0.25));
       outerHalo.scale.setScalar(
         10.3 * (1 + adaptiveResponse * 0.07 + eruption * 0.04),
       );
@@ -1715,8 +1718,8 @@ export function ThoughtOrbScene({
           <Control
             label="Agitation gain (monitor)"
             helpText="Scales how much audio energy turns into internal current speed and turbulence. Higher values feel more animated in speech peaks."
-            min={0.1}
-            max={2.5}
+            min={0}
+            max={5}
             step={0.01}
             value={controlsRef.current.agitationGain}
             onChange={(v) => {
@@ -1755,7 +1758,7 @@ export function ThoughtOrbScene({
             label="Firefly chance (monitor)"
             helpText="Probability per-particle for accent-hue firefly sparks during attack/novelty. Higher creates more frequent dramatic color contrast."
             min={0}
-            max={0.4}
+            max={1}
             step={0.005}
             value={controlsRef.current.fireflyChance}
             onChange={(v) => {
@@ -1837,8 +1840,8 @@ export function ThoughtOrbScene({
           <Control
             label="Master intensity"
             helpText="Overall energy multiplier for particle motion. Higher values make the whole cloud feel more active."
-            min={0.3}
-            max={2}
+            min={0.1}
+            max={4}
             step={0.01}
             value={controlsRef.current.masterIntensity}
             onChange={(v) => {
@@ -1851,7 +1854,7 @@ export function ThoughtOrbScene({
             label="Idle drift"
             helpText="Baseline movement when there is little speech. Lower keeps silence calm; higher keeps constant background motion."
             min={0}
-            max={1.2}
+            max={3}
             step={0.01}
             value={controlsRef.current.idleDrift}
             onChange={(v) => {
@@ -1863,8 +1866,8 @@ export function ThoughtOrbScene({
           <Control
             label="Agitation gain"
             helpText="How strongly detected speech energy increases current speed and turbulence."
-            min={0.1}
-            max={2.5}
+            min={0}
+            max={5}
             step={0.01}
             value={controlsRef.current.agitationGain}
             onChange={(v) => {
@@ -1902,12 +1905,25 @@ export function ThoughtOrbScene({
           <Control
             label="Flow smoothing"
             helpText="Inertia/drag of particle velocity. Higher values feel smoother and less jittery."
-            min={0.2}
+            min={0}
             max={1}
             step={0.01}
             value={controlsRef.current.flowSmoothing}
             onChange={(v) => {
               controlsRef.current.flowSmoothing = v;
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+            }}
+          />
+          <Control
+            label="Turbulence"
+            helpText="Scales the flow field's raw chaotic energy. Low = smooth, languid drift. High = wild swirling currents that really churn. Stacks with agitation gain."
+            min={0}
+            max={3}
+            step={0.01}
+            value={controlsRef.current.turbulence}
+            onChange={(v) => {
+              controlsRef.current.turbulence = v;
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}
@@ -1942,7 +1958,7 @@ export function ThoughtOrbScene({
             label="Spark burst size"
             helpText="How many spark particles appear when a spark trigger occurs."
             min={1}
-            max={18}
+            max={40}
             step={1}
             value={controlsRef.current.sparkBurstSize}
             onChange={(v) => {
@@ -1981,7 +1997,7 @@ export function ThoughtOrbScene({
             label="Bloom bias"
             helpText="How much the glow appears to bloom/expand around bright moments."
             min={0}
-            max={1.5}
+            max={3}
             step={0.01}
             value={controlsRef.current.bloomBias}
             onChange={(v) => {
@@ -1994,7 +2010,7 @@ export function ThoughtOrbScene({
             label="Rotation drift"
             helpText="Slow global rotation of the whole thought cloud."
             min={0}
-            max={0.3}
+            max={1.5}
             step={0.005}
             value={controlsRef.current.rotationDrift}
             onChange={(v) => {
@@ -2115,10 +2131,23 @@ export function ThoughtOrbScene({
             }}
           />
           <Control
+            label="Saturation"
+            helpText="Overall color saturation multiplier. Below 1 = desaturated, ghostly, grayscale-trending. Above 1 = oversaturated, intense, vivid. Affects particles and glow equally."
+            min={0}
+            max={1.8}
+            step={0.01}
+            value={controlsRef.current.saturation}
+            onChange={(v) => {
+              controlsRef.current.saturation = v;
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+            }}
+          />
+          <Control
             label="Firefly chance"
             helpText="Probability per-particle for accent-hue firefly sparks during attack/novelty. Higher creates more frequent dramatic color contrast."
             min={0}
-            max={0.4}
+            max={1}
             step={0.005}
             value={controlsRef.current.fireflyChance}
             onChange={(v) => {

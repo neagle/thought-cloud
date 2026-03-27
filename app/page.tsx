@@ -25,6 +25,8 @@ const INITIAL_PRESENCE_CONTROLS: Controls = {
   speechBias: 1.45,
   flowSmoothing: 0.97,
   cohesion: 0.84,
+  turbulence: 1.0,
+  saturation: 1.0,
   baseHue: 0.56,
   accentHue: 0.72,
   highlightHue: 0.1,

@@ -66,7 +66,8 @@ The optional `duration` field works the same as for presets (default: **2.0s**).
 **Presence channel controls** (available keys):  
 `masterIntensity`, `idleDrift`, `agitationGain`, `sparkThreshold`, `sparkBurstSize`,
 `haloStrength`, `coreStrength`, `bloomBias`, `rotationDrift`, `speechBias`,
-`flowSmoothing`, `cohesion`, `baseHue`, `accentHue`, `highlightHue`, `hueDrift`,
+`flowSmoothing`, `cohesion`, `turbulence`, `saturation`,
+`baseHue`, `accentHue`, `highlightHue`, `hueDrift`,
 `speechColorBoost`, `sustainBackoff`, `fireflyChance`, `fireflyHold`, `fireflyFade`
 
 **Voicemail channel controls** (available keys):  
