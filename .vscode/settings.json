@@ -11,5 +11,6 @@
 		"statusBar.debuggingForeground": "#FFFBFB",
 		"statusBar.noFolderBackground": "#610606",
 		"statusBar.noFolderForeground": "#FFFBFB"
-	}
+	},
+	"postman.settings.dotenv-detection-notification-visibility": false
 }

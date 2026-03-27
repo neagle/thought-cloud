@@ -60,6 +60,7 @@ export default function Page() {
   const channelRef = useRef<Channel>("presence");
   const syncRef = useRef<TabSync | null>(null);
   const lastServerChannelRef = useRef<Channel>("presence");
+  const lastCueActionIdRef = useRef<string | null>(null);
   const audioStartedRef = useRef(false);
   const presenceControlsRef = useRef<Controls>(INITIAL_PRESENCE_CONTROLS);
   const voicemailControlsRef = useRef<VoicemailControls>(INITIAL_VOICEMAIL_CONTROLS);
@@ -171,17 +172,39 @@ export default function Page() {
     });
   }, [audioStarted]);
 
-  // Poll /api/cue every 500ms for QLab-triggered channel changes
+  // Poll /api/cue every 500ms for QLab-triggered changes
   useEffect(() => {
     const interval = window.setInterval(async () => {
       try {
         const res = await fetch("/api/cue");
         if (!res.ok) return;
-        const { channel: serverChannel } = (await res.json()) as { channel: Channel };
+        const { channel: serverChannel, pendingAction } = (await res.json()) as {
+          channel: Channel;
+          pendingAction: { id: string; type: string; channel?: Channel; scope?: Channel; data?: Record<string, number> } | null;
+        };
+
         if (serverChannel !== lastServerChannelRef.current) {
           lastServerChannelRef.current = serverChannel;
           setChannel(serverChannel);
           syncRef.current?.broadcast({ type: "channel", channel: serverChannel });
+        }
+
+        if (pendingAction && pendingAction.id !== lastCueActionIdRef.current) {
+          lastCueActionIdRef.current = pendingAction.id;
+          if ((pendingAction.type === "preset" || pendingAction.type === "controls") && pendingAction.scope && pendingAction.data) {
+            const { scope, data } = pendingAction;
+            if (scope === "presence") {
+              const merged = { ...presenceControlsRef.current, ...data } as Controls;
+              presenceControlsRef.current = merged;
+              setPresenceControls({ ...merged });
+              syncRef.current?.broadcast({ type: "controls", scope: "presence", data: merged as unknown as Record<string, number> });
+            } else if (scope === "voicemail") {
+              const merged = { ...voicemailControlsRef.current, ...data } as VoicemailControls;
+              voicemailControlsRef.current = merged;
+              setVoicemailControls({ ...merged });
+              syncRef.current?.broadcast({ type: "controls", scope: "voicemail", data: merged as unknown as Record<string, number> });
+            }
+          }
         }
       } catch {}
     }, 500);
