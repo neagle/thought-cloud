@@ -4,10 +4,18 @@ import { CHANNELS } from "@/types";
 
 const redis = Redis.fromEnv();
 
+const DEFAULT_TRANSITION_DURATION = 2.0; // seconds
+
+function parseDuration(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : parseFloat(raw as string);
+  if (!isFinite(n) || n < 0) return DEFAULT_TRANSITION_DURATION;
+  return n;
+}
+
 export type CuePendingAction =
   | { id: string; type: "channel"; channel: Channel }
-  | { id: string; type: "preset"; scope: Channel; data: Record<string, number> }
-  | { id: string; type: "controls"; scope: Channel; data: Record<string, number> };
+  | { id: string; type: "preset"; scope: Channel; data: Record<string, number>; duration: number }
+  | { id: string; type: "controls"; scope: Channel; data: Record<string, number>; duration: number };
 
 export async function GET() {
   try {
@@ -56,7 +64,7 @@ export async function POST(req: Request) {
       if (!data) {
         return Response.json({ error: `Preset "${name}" not found for channel "${channel}"` }, { status: 404 });
       }
-      const action: CuePendingAction = { id, type: "preset", scope: channel, data };
+      const action: CuePendingAction = { id, type: "preset", scope: channel, data, duration: parseDuration(body.duration) };
       await redis.set("cue:pending", action, { ex: 30 });
       return Response.json({ ok: true });
     }
@@ -68,7 +76,7 @@ export async function POST(req: Request) {
       if (!scope || !CHANNELS.includes(scope) || typeof data !== "object" || data === null) {
         return Response.json({ error: "Invalid controls payload" }, { status: 400 });
       }
-      const action: CuePendingAction = { id, type: "controls", scope, data };
+      const action: CuePendingAction = { id, type: "controls", scope, data, duration: parseDuration(body.duration) };
       await redis.set("cue:pending", action, { ex: 30 });
       return Response.json({ ok: true });
     }

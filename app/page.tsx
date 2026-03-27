@@ -64,6 +64,8 @@ export default function Page() {
   const audioStartedRef = useRef(false);
   const presenceControlsRef = useRef<Controls>(INITIAL_PRESENCE_CONTROLS);
   const voicemailControlsRef = useRef<VoicemailControls>(INITIAL_VOICEMAIL_CONTROLS);
+  const [presenceTransitionDuration, setPresenceTransitionDuration] = useState(0);
+  const [voicemailTransitionDuration, setVoicemailTransitionDuration] = useState(0);
   // Debounce timers for KV persistence
   const presenceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voicemailSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -180,7 +182,7 @@ export default function Page() {
         if (!res.ok) return;
         const { channel: serverChannel, pendingAction } = (await res.json()) as {
           channel: Channel;
-          pendingAction: { id: string; type: string; channel?: Channel; scope?: Channel; data?: Record<string, number> } | null;
+          pendingAction: { id: string; type: string; channel?: Channel; scope?: Channel; data?: Record<string, number>; duration?: number } | null;
         };
 
         if (serverChannel !== lastServerChannelRef.current) {
@@ -193,14 +195,17 @@ export default function Page() {
           lastCueActionIdRef.current = pendingAction.id;
           if ((pendingAction.type === "preset" || pendingAction.type === "controls") && pendingAction.scope && pendingAction.data) {
             const { scope, data } = pendingAction;
+            const duration = typeof pendingAction.duration === "number" ? pendingAction.duration : 2.0;
             if (scope === "presence") {
               const merged = { ...presenceControlsRef.current, ...data } as Controls;
               presenceControlsRef.current = merged;
+              setPresenceTransitionDuration(duration);
               setPresenceControls({ ...merged });
               syncRef.current?.broadcast({ type: "controls", scope: "presence", data: merged as unknown as Record<string, number> });
             } else if (scope === "voicemail") {
               const merged = { ...voicemailControlsRef.current, ...data } as VoicemailControls;
               voicemailControlsRef.current = merged;
+              setVoicemailTransitionDuration(duration);
               setVoicemailControls({ ...merged });
               syncRef.current?.broadcast({ type: "controls", scope: "voicemail", data: merged as unknown as Record<string, number> });
             }
@@ -327,6 +332,7 @@ export default function Page() {
           kioskMode={kioskMode}
           channel="presence"
           externalControls={presenceControls}
+          transitionDuration={presenceTransitionDuration}
           onControlsChange={handlePresenceControlsChange}
         />
       </div>
@@ -338,6 +344,7 @@ export default function Page() {
         kioskMode={kioskMode}
         channel="voicemail"
         externalControls={voicemailControls}
+        transitionDuration={voicemailTransitionDuration}
         onControlsChange={handleVoicemailControlsChange}
       />
 

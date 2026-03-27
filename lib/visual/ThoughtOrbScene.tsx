@@ -39,6 +39,7 @@ interface Props {
   kioskMode: boolean;
   channel: Channel;
   externalControls?: Controls;
+  transitionDuration?: number;
   onControlsChange?: (c: Controls) => void;
   onLoadPreset?: (data: Record<string, number>) => void;
 }
@@ -230,11 +231,18 @@ export function ThoughtOrbScene({
   kioskMode,
   channel,
   externalControls,
+  transitionDuration = 0,
   onControlsChange,
   onLoadPreset,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<Controls>(initialControls);
+  const controlsTransitionRef = useRef<{
+    from: Record<string, number>;
+    to: Record<string, number>;
+    startMs: number;
+    durationMs: number;
+  } | null>(null);
   const audioRef = useRef<AudioAnalyzer | null>(audioAnalyzer);
   const monitorCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const monitorHistoryRef =
@@ -261,9 +269,26 @@ export function ThoughtOrbScene({
 
   useEffect(() => {
     if (!externalControls) return;
-    Object.assign(controlsRef.current, externalControls);
-    forceRender((n) => n + 1);
-  }, [externalControls]);
+    if (transitionDuration <= 0) {
+      Object.assign(controlsRef.current, externalControls);
+      controlsTransitionRef.current = null;
+      forceRender((n) => n + 1);
+      return;
+    }
+    const keys = Object.keys(externalControls) as (keyof Controls)[];
+    const from: Record<string, number> = {};
+    const to: Record<string, number> = {};
+    for (const k of keys) {
+      from[k] = controlsRef.current[k] as number;
+      to[k] = externalControls[k] as number;
+    }
+    controlsTransitionRef.current = {
+      from,
+      to,
+      startMs: performance.now(),
+      durationMs: transitionDuration * 1000,
+    };
+  }, [externalControls, transitionDuration]);
 
   useEffect(() => {
     if (!monitorOpen) return;
@@ -772,6 +797,19 @@ export function ThoughtOrbScene({
       frameId = requestAnimationFrame(animate);
       const elapsed = clock.getElapsedTime();
       const delta = Math.min(clock.getDelta(), 0.033);
+
+      // Lerp controls toward transition target if one is active
+      const tr = controlsTransitionRef.current;
+      if (tr) {
+        const t = Math.min(1, (performance.now() - tr.startMs) / tr.durationMs);
+        const eased = t * t * (3 - 2 * t); // smoothstep
+        const c = controlsRef.current as unknown as Record<string, number>;
+        for (const k in tr.from) {
+          c[k] = tr.from[k] + (tr.to[k] - tr.from[k]) * eased;
+        }
+        if (t >= 1) controlsTransitionRef.current = null;
+      }
+
       const controls = controlsRef.current;
       const signals = audioRef.current?.getSignals() ?? {
         level: 0,

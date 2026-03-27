@@ -36,14 +36,22 @@ do shell script "curl -s -X POST 'https://YOUR_VERCEL_URL/api/cue' -H 'Content-T
 Presets must already be saved in the app's UI before they can be triggered by QLab.  
 The preset name is case-sensitive and must match exactly.
 
+The optional `duration` field controls the transition length in seconds (default: **2.0**).  
+Pass `"duration": 0` for an instant snap.
+
 ```applescript
--- Load preset named "dramatic" for the presence channel
+-- Load preset "dramatic" with default 2s transition
 do shell script "curl -s -X POST 'https://YOUR_VERCEL_URL/api/cue' -H 'Content-Type: application/json' -d '{\"action\":\"preset\",\"channel\":\"presence\",\"name\":\"dramatic\"}'"
 ```
 
 ```applescript
--- Load preset named "quiet end" for the voicemail channel
-do shell script "curl -s -X POST 'https://YOUR_VERCEL_URL/api/cue' -H 'Content-Type: application/json' -d '{\"action\":\"preset\",\"channel\":\"voicemail\",\"name\":\"quiet end\"}'"
+-- Load preset with a custom 4s transition
+do shell script "curl -s -X POST 'https://YOUR_VERCEL_URL/api/cue' -H 'Content-Type: application/json' -d '{\"action\":\"preset\",\"channel\":\"presence\",\"name\":\"dramatic\",\"duration\":4}'"
+```
+
+```applescript
+-- Instant snap (no transition)
+do shell script "curl -s -X POST 'https://YOUR_VERCEL_URL/api/cue' -H 'Content-Type: application/json' -d '{\"action\":\"preset\",\"channel\":\"presence\",\"name\":\"dramatic\",\"duration\":0}'"
 ```
 
 If the preset name is not found, the API returns a 404 (the cue fires but nothing changes in the app).
@@ -52,7 +60,8 @@ If the preset name is not found, the API returns a 404 (the cue fires but nothin
 
 ### 3. Set Individual Control Values
 
-You can push any subset of slider values directly. Unspecified sliders keep their current values.
+You can push any subset of slider values directly. Unspecified sliders keep their current values.  
+The optional `duration` field works the same as for presets (default: **2.0s**).
 
 **Presence channel controls** (available keys):  
 `masterIntensity`, `idleDrift`, `agitationGain`, `sparkThreshold`, `sparkBurstSize`,
@@ -86,6 +95,9 @@ QLab cues fire in order. To switch channel AND load a preset:
 ---
 
 ## Testing from Terminal
+
+Use single quotes around the JSON body — no backslash-escaping needed in the shell.  
+(The `\"` escaping in the AppleScript snippets above is only needed inside AppleScript's double-quoted strings.)
 
 ```bash
 # Switch channel
