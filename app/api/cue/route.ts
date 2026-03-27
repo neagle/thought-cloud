@@ -16,7 +16,8 @@ export async function GET() {
       redis.get<CuePendingAction>("cue:pending"),
     ]);
     return Response.json({ channel: channel ?? "presence", pendingAction: pendingAction ?? null });
-  } catch {
+  } catch (err) {
+    console.error("[/api/cue GET]", err);
     return Response.json({ channel: "presence", pendingAction: null }, { status: 503 });
   }
 }
@@ -73,7 +74,8 @@ export async function POST(req: Request) {
     }
 
     return Response.json({ error: "Unknown action" }, { status: 400 });
-  } catch {
-    return Response.json({ ok: false }, { status: 500 });
+  } catch (err) {
+    console.error("[/api/cue POST]", err);
+    return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 }
