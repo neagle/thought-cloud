@@ -1,8 +1,6 @@
-import { Redis } from "@upstash/redis";
+import { storageGet, storageSet } from "@/lib/storage";
 import type { Channel } from "@/types";
 import { CHANNELS } from "@/types";
-
-const redis = Redis.fromEnv();
 
 const DEFAULT_TRANSITION_DURATION = 2.0; // seconds
 
@@ -15,13 +13,14 @@ function parseDuration(raw: unknown): number {
 export type CuePendingAction =
   | { id: string; type: "channel"; channel: Channel }
   | { id: string; type: "preset"; scope: Channel; data: Record<string, number>; duration: number }
-  | { id: string; type: "controls"; scope: Channel; data: Record<string, number>; duration: number };
+  | { id: string; type: "controls"; scope: Channel; data: Record<string, number>; duration: number }
+  | { id: string; type: "kiosk"; value: boolean };
 
 export async function GET() {
   try {
     const [channel, pendingAction] = await Promise.all([
-      redis.get<Channel>("channel"),
-      redis.get<CuePendingAction>("cue:pending"),
+      storageGet<Channel>("channel"),
+      storageGet<CuePendingAction>("cue:pending"),
     ]);
     return Response.json({ channel: channel ?? "presence", pendingAction: pendingAction ?? null });
   } catch (err) {
@@ -45,8 +44,8 @@ export async function POST(req: Request) {
       }
       const action: CuePendingAction = { id, type: "channel", channel: channel as Channel };
       await Promise.all([
-        redis.set("channel", channel),
-        redis.set("cue:pending", action, { ex: 30 }),
+        storageSet("channel", channel),
+        storageSet("cue:pending", action, 30),
       ]);
       return Response.json({ ok: true });
     }
@@ -59,13 +58,13 @@ export async function POST(req: Request) {
         return Response.json({ error: "Invalid preset payload" }, { status: 400 });
       }
       const presets =
-        (await redis.get<Record<string, Record<string, number>>>(`presets:${channel}`)) ?? {};
+        (await storageGet<Record<string, Record<string, number>>>(`presets:${channel}`)) ?? {};
       const data = presets[name.trim()];
       if (!data) {
         return Response.json({ error: `Preset "${name}" not found for channel "${channel}"` }, { status: 404 });
       }
       const action: CuePendingAction = { id, type: "preset", scope: channel, data, duration: parseDuration(body.duration) };
-      await redis.set("cue:pending", action, { ex: 30 });
+      await storageSet("cue:pending", action, 30);
       return Response.json({ ok: true });
     }
 
@@ -77,7 +76,18 @@ export async function POST(req: Request) {
         return Response.json({ error: "Invalid controls payload" }, { status: 400 });
       }
       const action: CuePendingAction = { id, type: "controls", scope, data, duration: parseDuration(body.duration) };
-      await redis.set("cue:pending", action, { ex: 30 });
+      await storageSet("cue:pending", action, 30);
+      return Response.json({ ok: true });
+    }
+
+    // --- action: "kiosk" — enter or exit kiosk mode ---
+    if (actionType === "kiosk") {
+      const value = body.value;
+      if (typeof value !== "boolean") {
+        return Response.json({ error: "kiosk action requires boolean 'value'" }, { status: 400 });
+      }
+      const action: CuePendingAction = { id, type: "kiosk", value };
+      await storageSet("cue:pending", action, 30);
       return Response.json({ ok: true });
     }
 

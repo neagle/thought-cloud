@@ -14,6 +14,9 @@ export type Controls = {
   sparkBurstSize: number;
   haloStrength: number;
   coreStrength: number;
+  coreHue: number;
+  coreSize: number;
+  coreElongation: number;
   bloomBias: number;
   rotationDrift: number;
   speechBias: number;
@@ -1357,9 +1360,9 @@ export function ThoughtOrbScene({
       );
       const coreTargetHue = wrapHue(
         THREE.MathUtils.lerp(
-          controls.baseHue,
+          controls.coreHue,
           controls.highlightHue,
-          0.34 + eruption * 0.66,
+          eruption * 0.66,
         ),
       );
       const coreHue = wrapHue(coreTargetHue + Math.sin(hueTime + 0.8) * 0.01);
@@ -1408,12 +1411,15 @@ export function ThoughtOrbScene({
       outerHalo.scale.setScalar(
         10.3 * (1 + adaptiveResponse * 0.07 + eruption * 0.04),
       );
-      core.scale.setScalar(
-        2.3 +
+      const coreSizeVal =
+        (2.3 +
           adaptiveResponse * 0.9 +
           signals.attack * 0.24 +
-          colorResponse * 0.14,
-      );
+          colorResponse * 0.14) *
+        controls.coreSize;
+      const elongX = 1 - controls.coreElongation * speechEnergy * 0.35;
+      const elongY = 1 + controls.coreElongation * speechEnergy * 0.35;
+      core.scale.set(coreSizeVal * elongX, coreSizeVal * elongY, 1);
 
       const dynamicSparkThreshold = Math.max(
         0.02,
@@ -1989,6 +1995,46 @@ export function ThoughtOrbScene({
             value={controlsRef.current.coreStrength}
             onChange={(v) => {
               controlsRef.current.coreStrength = v;
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+            }}
+          />
+          <Control
+            label="Core hue"
+            helpText="Dedicated color of the orb nucleus. At rest this is the core's own identity color. Shifts toward the highlight hue during speech eruptions."
+            min={0}
+            max={1}
+            step={0.001}
+            value={controlsRef.current.coreHue}
+            hue={controlsRef.current.coreHue * 360}
+            onChange={(v) => {
+              controlsRef.current.coreHue = v;
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+            }}
+          />
+          <Control
+            label="Core size"
+            helpText="Base size of the orb nucleus. Low = tiny pinprick. High = massive, dominating glow. Speech still pulses it larger either way."
+            min={0.1}
+            max={3}
+            step={0.01}
+            value={controlsRef.current.coreSize}
+            onChange={(v) => {
+              controlsRef.current.coreSize = v;
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+            }}
+          />
+          <Control
+            label="Core elongation"
+            helpText="Speech-driven shape distortion. At 0 the core is always round. Higher values stretch it vertically when speech energy is high — as if the voice is pulling the nucleus apart."
+            min={0}
+            max={2}
+            step={0.01}
+            value={controlsRef.current.coreElongation}
+            onChange={(v) => {
+              controlsRef.current.coreElongation = v;
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}

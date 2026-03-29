@@ -43,6 +43,10 @@ export function CommandPalette({
       kioskMode
         ? { label: "Exit kiosk mode (show controls)", action: onExitKiosk }
         : { label: "Enter kiosk mode (hide controls)", action: onEnterKiosk },
+      {
+        label: "QLab cue reference →",
+        action: () => window.open("/cues", "_blank"),
+      },
     ];
 
   return (

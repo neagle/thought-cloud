@@ -1,8 +1,6 @@
-import { Redis } from "@upstash/redis";
+import { storageGet, storageSet } from "@/lib/storage";
 import type { Channel } from "@/types";
 import { CHANNELS } from "@/types";
-
-const redis = Redis.fromEnv();
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -12,7 +10,7 @@ export async function GET(req: Request) {
   }
   try {
     const presets =
-      (await redis.get<Record<string, Record<string, number>>>(`presets:${channel}`)) ?? {};
+      (await storageGet<Record<string, Record<string, number>>>(`presets:${channel}`)) ?? {};
     return Response.json({ presets });
   } catch {
     return Response.json({ presets: {} }, { status: 503 });
@@ -37,9 +35,9 @@ export async function POST(req: Request) {
     }
     const key = `presets:${body.channel}`;
     const existing =
-      (await redis.get<Record<string, Record<string, number>>>(key)) ?? {};
+      (await storageGet<Record<string, Record<string, number>>>(key)) ?? {};
     existing[body.name.trim()] = body.data;
-    await redis.set(key, existing);
+    await storageSet(key, existing);
     return Response.json({ ok: true });
   } catch {
     return Response.json({ ok: false }, { status: 503 });
@@ -58,9 +56,9 @@ export async function DELETE(req: Request) {
     }
     const key = `presets:${body.channel}`;
     const existing =
-      (await redis.get<Record<string, Record<string, number>>>(key)) ?? {};
+      (await storageGet<Record<string, Record<string, number>>>(key)) ?? {};
     delete existing[body.name];
-    await redis.set(key, existing);
+    await storageSet(key, existing);
     return Response.json({ ok: true });
   } catch {
     return Response.json({ ok: false }, { status: 503 });

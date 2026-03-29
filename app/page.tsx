@@ -20,6 +20,9 @@ const INITIAL_PRESENCE_CONTROLS: Controls = {
   sparkBurstSize: 7,
   haloStrength: 0.33,
   coreStrength: 1,
+  coreHue: 0.55,
+  coreSize: 1.0,
+  coreElongation: 0.0,
   bloomBias: 0.65,
   rotationDrift: 0.26,
   speechBias: 1.45,
@@ -76,6 +79,16 @@ export default function Page() {
     setChannelState(c);
     channelRef.current = c;
   }
+
+  // Lock scrolling for the full-screen canvas app
+  useEffect(() => {
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+    };
+  }, []);
 
   // Read ?kiosk=true from URL on mount + fetch persisted state from KV
   useEffect(() => {
@@ -184,7 +197,7 @@ export default function Page() {
         if (!res.ok) return;
         const { channel: serverChannel, pendingAction } = (await res.json()) as {
           channel: Channel;
-          pendingAction: { id: string; type: string; channel?: Channel; scope?: Channel; data?: Record<string, number>; duration?: number } | null;
+          pendingAction: { id: string; type: string; channel?: Channel; scope?: Channel; data?: Record<string, number>; duration?: number; value?: boolean } | null;
         };
 
         if (serverChannel !== lastServerChannelRef.current) {
@@ -195,7 +208,9 @@ export default function Page() {
 
         if (pendingAction && pendingAction.id !== lastCueActionIdRef.current) {
           lastCueActionIdRef.current = pendingAction.id;
-          if ((pendingAction.type === "preset" || pendingAction.type === "controls") && pendingAction.scope && pendingAction.data) {
+          if (pendingAction.type === "kiosk" && typeof pendingAction.value === "boolean") {
+            setKioskMode(pendingAction.value);
+          } else if ((pendingAction.type === "preset" || pendingAction.type === "controls") && pendingAction.scope && pendingAction.data) {
             const { scope, data } = pendingAction;
             const duration = typeof pendingAction.duration === "number" ? pendingAction.duration : 2.0;
             if (scope === "presence") {

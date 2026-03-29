@@ -1,12 +1,10 @@
-import { Redis } from "@upstash/redis";
-
-const redis = Redis.fromEnv();
+import { storageGet, storageSet } from "@/lib/storage";
 
 export async function GET() {
   try {
     const [presence, voicemail] = await Promise.all([
-      redis.get<Record<string, number>>("controls:presence"),
-      redis.get<Record<string, number>>("controls:voicemail"),
+      storageGet<Record<string, number>>("controls:presence"),
+      storageGet<Record<string, number>>("controls:voicemail"),
     ]);
     return Response.json({ presence: presence ?? null, voicemail: voicemail ?? null });
   } catch {
@@ -26,7 +24,7 @@ export async function POST(req: Request) {
     ) {
       return Response.json({ error: "Invalid payload" }, { status: 400 });
     }
-    await redis.set(`controls:${body.scope}`, body.data);
+    await storageSet(`controls:${body.scope}`, body.data);
     return Response.json({ ok: true });
   } catch {
     return Response.json({ ok: true });
