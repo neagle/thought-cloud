@@ -27,10 +27,15 @@ function buildCurl(origin: string, body: Record<string, unknown>): string {
   return `curl -s -X POST '${origin}/api/cue' \\\n  -H 'Content-Type: application/json' \\\n  -d '${jsonArg(body)}'`;
 }
 
-function buildAppleScript(origin: string, body: Record<string, unknown>): string {
-  // Inside an AppleScript double-quoted string, inner " must be escaped as \"
+function buildAppleScript(
+  origin: string,
+  body: Record<string, unknown>,
+): string {
+  // In AppleScript strings, \" is an escaped double quote. Wrapping the JSON
+  // in single quotes in the shell command means bash passes it through
+  // literally, so the server receives valid JSON.
   const json = jsonArg(body).replace(/"/g, '\\"');
-  return `do shell script "curl -s -X POST '${origin}/api/cue' -H 'Content-Type: application/json' -d \\"${json}\\""`; 
+  return `do shell script "curl -s -X POST '${origin}/api/cue' -H 'Content-Type: application/json' -d '${json}'"`;
 }
 
 function buildBlocks(origin: string): CueBlock[] {
@@ -82,17 +87,32 @@ function buildBlocks(origin: string): CueBlock[] {
     block(
       "Load a named preset (instant)",
       "Replace YOUR_PRESET_NAME with the exact name you saved in the app. Omitting duration defaults to 2 seconds.",
-      { action: "preset", channel: "presence", name: "YOUR_PRESET_NAME", duration: 0 },
+      {
+        action: "preset",
+        channel: "presence",
+        name: "YOUR_PRESET_NAME",
+        duration: 0,
+      },
     ),
     block(
       "Load a named preset (2 s transition)",
       "Smoothly interpolates all controls from their current state to the preset over 2 seconds.",
-      { action: "preset", channel: "presence", name: "YOUR_PRESET_NAME", duration: 2 },
+      {
+        action: "preset",
+        channel: "presence",
+        name: "YOUR_PRESET_NAME",
+        duration: 2,
+      },
     ),
     block(
       "Load a named preset (slow 5 s transition)",
       "Useful for very gradual mood shifts between scenes.",
-      { action: "preset", channel: "presence", name: "YOUR_PRESET_NAME", duration: 5 },
+      {
+        action: "preset",
+        channel: "presence",
+        name: "YOUR_PRESET_NAME",
+        duration: 5,
+      },
     ),
 
     // -----------------------------------------------------------------------
@@ -101,42 +121,82 @@ function buildBlocks(origin: string): CueBlock[] {
     block(
       "Control: turbulence",
       "Flow field chaos. 0 = smooth laminar drift. 3 = wild, unpredictable swirling. Most dramatic single lever for 'calm vs angry'.",
-      { action: "controls", scope: "presence", data: { turbulence: 1.0 }, duration: 2 },
+      {
+        action: "controls",
+        scope: "presence",
+        data: { turbulence: 1.0 },
+        duration: 2,
+      },
     ),
     block(
       "Control: agitationGain",
       "How strongly speech agitates the flow field. Low = voice barely stirs things. High (up to 5) = voice throws the whole cloud into turmoil.",
-      { action: "controls", scope: "presence", data: { agitationGain: 1.75 }, duration: 2 },
+      {
+        action: "controls",
+        scope: "presence",
+        data: { agitationGain: 1.75 },
+        duration: 2,
+      },
     ),
     block(
       "Control: idleDrift",
       "Baseline restlessness at silence. 0 = nearly still. 3 = always churning even without sound.",
-      { action: "controls", scope: "presence", data: { idleDrift: 1.2 }, duration: 2 },
+      {
+        action: "controls",
+        scope: "presence",
+        data: { idleDrift: 1.2 },
+        duration: 2,
+      },
     ),
     block(
       "Control: saturation",
       "Color vividness of all particles, halos, and sparks. 0 = monochrome grey-white. 1.8 = intensely saturated.",
-      { action: "controls", scope: "presence", data: { saturation: 1.0 }, duration: 2 },
+      {
+        action: "controls",
+        scope: "presence",
+        data: { saturation: 1.0 },
+        duration: 2,
+      },
     ),
     block(
       "Control: coreHue",
       "Hue of the orb nucleus (0–1 maps to the full color wheel: 0=red, 0.17=gold, 0.33=green, 0.5=cyan, 0.67=blue, 0.83=violet). Still shifts toward highlightHue during speech.",
-      { action: "controls", scope: "presence", data: { coreHue: 0.55 }, duration: 2 },
+      {
+        action: "controls",
+        scope: "presence",
+        data: { coreHue: 0.55 },
+        duration: 2,
+      },
     ),
     block(
       "Control: coreSize",
       "Multiplier for nucleus scale. 0.2 = tiny cold star. 1.0 = default. 3.0 = massive dominating glow.",
-      { action: "controls", scope: "presence", data: { coreSize: 1.0 }, duration: 2 },
+      {
+        action: "controls",
+        scope: "presence",
+        data: { coreSize: 1.0 },
+        duration: 2,
+      },
     ),
     block(
       "Control: coreElongation",
       "Speech-driven shape distortion of the nucleus. 0 = always round. 1–2 = stretches vertically under voice pressure.",
-      { action: "controls", scope: "presence", data: { coreElongation: 0.0 }, duration: 2 },
+      {
+        action: "controls",
+        scope: "presence",
+        data: { coreElongation: 0.0 },
+        duration: 2,
+      },
     ),
     block(
       "Control: masterIntensity",
       "Overall brightness and energy multiplier. 1.0 = neutral. 4.0 = blazing.",
-      { action: "controls", scope: "presence", data: { masterIntensity: 1.3 }, duration: 2 },
+      {
+        action: "controls",
+        scope: "presence",
+        data: { masterIntensity: 1.3 },
+        duration: 2,
+      },
     ),
     block(
       "Multiple controls at once",
@@ -144,7 +204,12 @@ function buildBlocks(origin: string): CueBlock[] {
       {
         action: "controls",
         scope: "presence",
-        data: { turbulence: 2.5, agitationGain: 4.0, idleDrift: 2.2, saturation: 1.5 },
+        data: {
+          turbulence: 2.5,
+          agitationGain: 4.0,
+          idleDrift: 2.2,
+          saturation: 1.5,
+        },
         duration: 3,
       },
     ),
@@ -239,14 +304,30 @@ export default function CuesPage() {
     >
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
-        <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(162,227,255,0.45)", marginBottom: 6 }}>
+        <div
+          style={{
+            fontSize: 11,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "rgba(162,227,255,0.45)",
+            marginBottom: 6,
+          }}
+        >
           Thought Cloud
         </div>
-        <h1 style={{ fontSize: 26, fontWeight: 600, margin: "0 0 4px", color: "#dff6ff" }}>
+        <h1
+          style={{
+            fontSize: 26,
+            fontWeight: 600,
+            margin: "0 0 4px",
+            color: "#dff6ff",
+          }}
+        >
           QLab Cue Reference
         </h1>
         <p style={{ fontSize: 13, color: "rgba(162,227,255,0.55)", margin: 0 }}>
-          Ready-to-paste commands for every cue type. Toggle between curl (for terminal testing) and AppleScript (for QLab Script cues).
+          Ready-to-paste commands for every cue type. Toggle between curl (for
+          terminal testing) and AppleScript (for QLab Script cues).
         </p>
       </div>
 
@@ -265,10 +346,22 @@ export default function CuesPage() {
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(162,227,255,0.4)", marginBottom: 3 }}>
+          <div
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: "rgba(162,227,255,0.4)",
+              marginBottom: 3,
+            }}
+          >
             Detected address
           </div>
-          <code style={{ fontSize: 13, color: "#7df9ff", wordBreak: "break-all" }}>{origin}</code>
+          <code
+            style={{ fontSize: 13, color: "#7df9ff", wordBreak: "break-all" }}
+          >
+            {origin}
+          </code>
         </div>
 
         {/* Mode toggle */}
@@ -288,9 +381,11 @@ export default function CuesPage() {
               onClick={() => handleModeToggle(m)}
               style={{
                 padding: "7px 16px",
-                background: mode === m ? "rgba(162,227,255,0.15)" : "transparent",
+                background:
+                  mode === m ? "rgba(162,227,255,0.15)" : "transparent",
                 border: "none",
-                borderRight: m === "curl" ? "1px solid rgba(162,227,255,0.2)" : "none",
+                borderRight:
+                  m === "curl" ? "1px solid rgba(162,227,255,0.2)" : "none",
                 color: mode === m ? "#dff6ff" : "rgba(162,227,255,0.45)",
                 fontSize: 12,
                 fontWeight: mode === m ? 600 : 400,
@@ -347,14 +442,29 @@ export default function CuesPage() {
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#dff6ff", marginBottom: 3 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#dff6ff",
+                    marginBottom: 3,
+                  }}
+                >
                   {block.title}
                 </div>
-                <div style={{ fontSize: 11, color: "rgba(162,227,255,0.5)", lineHeight: 1.5 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "rgba(162,227,255,0.5)",
+                    lineHeight: 1.5,
+                  }}
+                >
                   {block.description}
                 </div>
               </div>
-              <CopyButton text={mode === "curl" ? block.curl : block.applescript} />
+              <CopyButton
+                text={mode === "curl" ? block.curl : block.applescript}
+              />
             </div>
 
             {/* Code */}
@@ -391,12 +501,26 @@ export default function CuesPage() {
           lineHeight: 1.7,
         }}
       >
-        <strong style={{ color: "rgba(162,227,255,0.65)" }}>QLab usage:</strong> Paste AppleScript blocks into a Script cue. QLab Free requires a 60-minute demo session (File → Start Demo) to use Script cues; you can test with curl commands in Terminal at any time.
+        <strong style={{ color: "rgba(162,227,255,0.65)" }}>QLab usage:</strong>{" "}
+        Paste AppleScript blocks into a Script cue. QLab Free requires a
+        60-minute demo session (File → Start Demo) to use Script cues; you can
+        test with curl commands in Terminal at any time.
         <br />
-        <strong style={{ color: "rgba(162,227,255,0.65)" }}>All control keys:</strong>{" "}
-        masterIntensity, idleDrift, agitationGain, sparkThreshold, sparkBurstSize, haloStrength, coreStrength, coreHue, coreSize, coreElongation, bloomBias, rotationDrift, speechBias, flowSmoothing, cohesion, turbulence, saturation, baseHue, accentHue, highlightHue, hueDrift, speechColorBoost, sustainBackoff, fireflyChance, fireflyHold, fireflyFade
+        <strong style={{ color: "rgba(162,227,255,0.65)" }}>
+          All control keys:
+        </strong>{" "}
+        masterIntensity, idleDrift, agitationGain, sparkThreshold,
+        sparkBurstSize, haloStrength, coreStrength, coreHue, coreSize,
+        coreElongation, bloomBias, rotationDrift, speechBias, flowSmoothing,
+        cohesion, turbulence, saturation, baseHue, accentHue, highlightHue,
+        hueDrift, speechColorBoost, sustainBackoff, fireflyChance, fireflyHold,
+        fireflyFade
         <br />
-        <strong style={{ color: "rgba(162,227,255,0.65)" }}>Transition duration:</strong> Pass <code style={{ color: "#7df9ff" }}>"duration": 0</code> for instant, or any positive number of seconds. Omit for the default (2 s).
+        <strong style={{ color: "rgba(162,227,255,0.65)" }}>
+          Transition duration:
+        </strong>{" "}
+        Pass <code style={{ color: "#7df9ff" }}>"duration": 0</code> for
+        instant, or any positive number of seconds. Omit for the default (2 s).
       </div>
     </div>
   );
