@@ -397,7 +397,7 @@ export function ThoughtOrbScene({
     scene.add(group);
 
     const haloTexture = makeSpriteTexture(
-      "rgba(158,240,255,0.9)",
+      "rgba(210,248,255,1)",
       "rgba(158,240,255,0)",
     );
 
@@ -411,11 +411,11 @@ export function ThoughtOrbScene({
       "rgba(255,200,40,0)",
     );
     const fieldTexture = makeSpriteTexture(
-      "rgba(140,220,255,0.85)",
+      "rgba(220,248,255,1)",
       "rgba(140,220,255,0)",
     );
 
-    const particleCount = 1700;
+    const particleCount = 980;
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
     const seeds = new Float32Array(particleCount);
@@ -460,7 +460,7 @@ export function ThoughtOrbScene({
     }
 
     for (let i = 0; i < particleCount; i += 1) {
-      const r = Math.pow(Math.random(), 0.6) * 1.55;
+      const r = Math.pow(Math.random(), 1.08) * 1.42;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(THREE.MathUtils.randFloatSpread(2));
       const x = r * Math.sin(phi) * Math.cos(theta);
@@ -521,9 +521,9 @@ export function ThoughtOrbScene({
 
     const particleMaterial = new THREE.PointsMaterial({
       map: fieldTexture,
-      size: 0.12,
+      size: 0.22,
       transparent: true,
-      opacity: 0.52,
+      opacity: 0.94,
       vertexColors: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -537,36 +537,48 @@ export function ThoughtOrbScene({
       map: haloTexture,
       color: new THREE.Color("#65dfff"),
       transparent: true,
-      opacity: 0.33,
+      opacity: 0.48,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
     const halo = new THREE.Sprite(haloMaterial);
-    halo.scale.set(7.8, 7.8, 1);
+    halo.scale.set(8.8, 8.8, 1);
     scene.add(halo);
 
     const outerHaloMaterial = new THREE.SpriteMaterial({
       map: haloTexture,
       color: new THREE.Color("#7e68ff"),
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.24,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
     const outerHalo = new THREE.Sprite(outerHaloMaterial);
-    outerHalo.scale.set(10.5, 10.5, 1);
+    outerHalo.scale.set(11.6, 11.6, 1);
     scene.add(outerHalo);
+
+    const bloomCoreMaterial = new THREE.SpriteMaterial({
+      map: haloTexture,
+      color: new THREE.Color("#b7f6ff"),
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const bloomCore = new THREE.Sprite(bloomCoreMaterial);
+    bloomCore.scale.set(4.9, 4.9, 1);
+    scene.add(bloomCore);
 
     const coreMaterial = new THREE.SpriteMaterial({
       map: haloTexture,
       color: new THREE.Color("#c4f3ff"),
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.72,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
     const core = new THREE.Sprite(coreMaterial);
-    core.scale.set(2.4, 2.4, 1);
+    core.scale.set(3.2, 3.2, 1);
     scene.add(core);
 
     const sparkCount = 120;
@@ -595,9 +607,9 @@ export function ThoughtOrbScene({
     );
     const sparkMaterial = new THREE.PointsMaterial({
       map: sparkTexture,
-      size: 0.18,
+      size: 0.28,
       transparent: true,
-      opacity: 0.9,
+      opacity: 1,
       vertexColors: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -646,7 +658,7 @@ export function ThoughtOrbScene({
 
     const fireflyOverlayMaterial = new THREE.PointsMaterial({
       map: fireflyTexture,
-      size: 0.96,
+      size: 1.22,
       transparent: true,
       opacity: 1,
       vertexColors: true,
@@ -1264,17 +1276,17 @@ export function ThoughtOrbScene({
             Math.sin(seed * 6.8 + elapsed * 0.6) * 0.02,
         );
         const particleSat = clamp(
-          (0.78 + orbitalBand * 0.2 + colorResponse * 0.22) * controls.saturation,
+          (0.92 + orbitalBand * 0.18 + colorResponse * 0.2) * controls.saturation,
           0,
           1,
         );
         const particleLight = clamp(
-          0.34 +
-            (1 - radiusNorm) * 0.24 +
-            speechPush * 0.26 +
-            orbitalBand * 0.07,
-          0.2,
-          0.92,
+          0.5 +
+            (1 - radiusNorm) * 0.28 +
+            speechPush * 0.22 +
+            orbitalBand * 0.08,
+          0.36,
+          1,
         );
         baseColorHSL.setHSL(particleHue, particleSat, particleLight);
 
@@ -1400,35 +1412,66 @@ export function ThoughtOrbScene({
       coreMaterial.color.setHSL(
         coreHue,
         clamp((0.78 + colorResponse * 0.18) * controls.saturation, 0, 1),
-        0.75 + eruption * 0.14,
+        0.84 + eruption * 0.12,
+      );
+      bloomCoreMaterial.color.setHSL(
+        wrapHue(coreHue - 0.015 + hueSway * 0.15),
+        clamp((0.62 + colorResponse * 0.14) * controls.saturation, 0, 1),
+        0.72 + eruption * 0.12,
       );
       particleMaterial.color.setRGB(1, 1, 1);
       sparkMaterial.color.setHSL(sparkHue, 0.9, 0.82 + eruption * 0.16);
 
       haloMaterial.opacity =
-        (0.2 +
-          adaptiveResponse * 0.32 +
-          signals.brightness * 0.1 +
-          colorResponse * 0.06) *
+        (0.36 +
+          adaptiveResponse * 0.42 +
+          signals.brightness * 0.14 +
+          colorResponse * 0.08) *
         controls.haloStrength;
       outerHaloMaterial.opacity =
-        0.11 + adaptiveResponse * 0.1 + eruption * 0.05;
-      coreMaterial.opacity =
-        (0.26 +
-          adaptiveResponse * 0.42 +
+        0.18 + adaptiveResponse * 0.16 + eruption * 0.08;
+      bloomCoreMaterial.opacity =
+        (0.18 +
+          adaptiveResponse * 0.34 +
           signals.attack * 0.16 +
           colorResponse * 0.08) *
+        (0.82 + controls.coreStrength * 0.42 + controls.bloomBias * 0.16);
+      coreMaterial.opacity =
+        (0.42 +
+          adaptiveResponse * 0.48 +
+          signals.attack * 0.22 +
+          colorResponse * 0.1) *
         controls.coreStrength;
 
-      halo.scale.setScalar(7.6 * haloPulse * (1 + controls.bloomBias * 0.25));
+      particleMaterial.size =
+        0.2 +
+        controls.bloomBias * 0.05 +
+        adaptiveResponse * 0.05 +
+        eruption * 0.04;
+      particleMaterial.opacity = clamp(
+        0.9 +
+          controls.masterIntensity * 0.03 +
+          adaptiveResponse * 0.08 +
+          colorResponse * 0.04,
+        0.88,
+        1,
+      );
+      halo.scale.setScalar(8.5 * haloPulse * (1 + controls.bloomBias * 0.32));
       outerHalo.scale.setScalar(
-        10.3 * (1 + adaptiveResponse * 0.07 + eruption * 0.04),
+        11.2 * (1 + adaptiveResponse * 0.1 + eruption * 0.08),
+      );
+      bloomCore.scale.setScalar(
+        (4.6 +
+          adaptiveResponse * 1.2 +
+          signals.attack * 0.36 +
+          colorResponse * 0.3) *
+          (1 + controls.bloomBias * 0.24),
       );
       const coreSizeVal =
-        (2.3 +
-          adaptiveResponse * 0.9 +
-          signals.attack * 0.24 +
-          colorResponse * 0.14) *
+        (3 +
+          adaptiveResponse * 1.05 +
+          signals.attack * 0.3 +
+          colorResponse * 0.18) *
         controls.coreSize;
       const elongX = 1 - controls.coreElongation * speechEnergy * 0.35;
       const elongY = 1 + controls.coreElongation * speechEnergy * 0.35;
@@ -1469,8 +1512,10 @@ export function ThoughtOrbScene({
         sparkPositions[ix + 2] = spark.base.z;
       }
       sparkPositionAttr.needsUpdate = true;
+      sparkMaterial.size =
+        0.26 + adaptiveResponse * 0.05 + clamp(activeBurstEnergy * 0.012, 0, 0.08);
       sparkMaterial.opacity =
-        0.72 + speechEnergy * 0.22 + clamp(activeBurstEnergy * 0.08, 0, 0.28);
+        0.9 + speechEnergy * 0.16 + clamp(activeBurstEnergy * 0.08, 0, 0.1);
 
       const fireflyOverlayPositionAttr = fireflyOverlayGeometry.getAttribute(
         "position",
@@ -1555,8 +1600,10 @@ export function ThoughtOrbScene({
       fireflyOverlayPositionAttr.needsUpdate = true;
       fireflyOverlayColorAttr.needsUpdate = true;
 
+      fireflyOverlayMaterial.size =
+        1.18 + adaptiveResponse * 0.12 + clamp(activeOverlayFireflies / 90, 0, 0.18);
       fireflyOverlayMaterial.opacity =
-        0.88 + clamp(activeOverlayFireflies / 24, 0, 0.22);
+        0.96 + clamp(activeOverlayFireflies / 24, 0, 0.04);
 
       renderer.render(scene, camera);
     }
@@ -1580,6 +1627,7 @@ export function ThoughtOrbScene({
       sparkMaterial.dispose();
       haloMaterial.dispose();
       outerHaloMaterial.dispose();
+      bloomCoreMaterial.dispose();
       coreMaterial.dispose();
       haloTexture.dispose();
       sparkTexture.dispose();

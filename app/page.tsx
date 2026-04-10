@@ -13,32 +13,32 @@ import { TabSync } from "@/lib/sync/TabSync";
 import type { Channel } from "@/types";
 
 const INITIAL_PRESENCE_CONTROLS: Controls = {
-  masterIntensity: 1.3,
+  masterIntensity: 1.65,
   idleDrift: 1.2,
   agitationGain: 1.75,
-  sparkThreshold: 0.1,
-  sparkBurstSize: 7,
-  haloStrength: 0.33,
-  coreStrength: 1,
+  sparkThreshold: 0.07,
+  sparkBurstSize: 10,
+  haloStrength: 0.9,
+  coreStrength: 1.7,
   coreHue: 0.55,
-  coreSize: 1.0,
+  coreSize: 1.55,
   coreElongation: 0.0,
-  bloomBias: 0.65,
+  bloomBias: 1.5,
   rotationDrift: 0.26,
   speechBias: 1.45,
   flowSmoothing: 0.97,
   cohesion: 0.84,
   turbulence: 1.0,
-  saturation: 1.0,
+  saturation: 1.15,
   baseHue: 0.56,
   accentHue: 0.72,
   highlightHue: 0.1,
   hueDrift: 0.018,
-  speechColorBoost: 1,
+  speechColorBoost: 1.2,
   sustainBackoff: 0.5,
-  fireflyChance: 0.16,
-  fireflyHold: 0.22,
-  fireflyFade: 1.05,
+  fireflyChance: 0.24,
+  fireflyHold: 0.28,
+  fireflyFade: 1.2,
 };
 
 const INITIAL_VOICEMAIL_CONTROLS: VoicemailControls = {
@@ -416,4 +416,3 @@ export default function Page() {
     </main>
   );
 }
-
