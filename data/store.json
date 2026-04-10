@@ -4,12 +4,12 @@
   },
   "controls:presence": {
     "value": {
-      "masterIntensity": 4,
-      "idleDrift": 3,
-      "agitationGain": 5,
+      "masterIntensity": 1.24,
+      "idleDrift": 1.98,
+      "agitationGain": 4.62,
       "sparkThreshold": 0.235,
       "sparkBurstSize": 7,
-      "haloStrength": 0.33,
+      "haloStrength": 2,
       "coreStrength": 1.99,
       "coreHue": 1,
       "coreSize": 1.17,
@@ -21,7 +21,7 @@
       "cohesion": 1.05,
       "turbulence": 3,
       "saturation": 1.8,
-      "baseHue": 0.32,
+      "baseHue": 0,
       "accentHue": 1,
       "highlightHue": 0.968,
       "hueDrift": 0,
@@ -119,5 +119,5 @@
         "fireflyFade": 1.05
       }
     }
-  },
+  }
 }

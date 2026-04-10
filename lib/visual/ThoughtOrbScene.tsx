@@ -218,6 +218,19 @@ function makeSpriteTexture(inner: string, outer: string) {
 
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
+
+  // Dither: add gaussian noise to break up radial gradient banding.
+  const imageData = ctx.getImageData(0, 0, size, size);
+  const px = imageData.data;
+  for (let i = 0; i < px.length; i += 4) {
+    // Box-Muller gaussian noise, ~σ=4 (invisible at rest, eliminates banding)
+    const u = Math.random() || 1e-10;
+    const v = Math.random();
+    const g = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) * 4;
+    px[i + 3] = Math.max(0, Math.min(255, px[i + 3] + g));
+  }
+  ctx.putImageData(imageData, 0, 0);
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
   return texture;
