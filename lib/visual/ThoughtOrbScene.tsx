@@ -555,7 +555,7 @@ export function ThoughtOrbScene({
     });
     const outerHalo = new THREE.Sprite(outerHaloMaterial);
     outerHalo.scale.set(11.6, 11.6, 1);
-    scene.add(outerHalo);
+    // scene.add(outerHalo);
 
     const bloomCoreMaterial = new THREE.SpriteMaterial({
       map: haloTexture,
@@ -567,7 +567,7 @@ export function ThoughtOrbScene({
     });
     const bloomCore = new THREE.Sprite(bloomCoreMaterial);
     bloomCore.scale.set(4.9, 4.9, 1);
-    scene.add(bloomCore);
+    // scene.add(bloomCore);
 
     const coreMaterial = new THREE.SpriteMaterial({
       map: haloTexture,
@@ -789,10 +789,11 @@ export function ThoughtOrbScene({
       speechEnergy: number,
       turbulence: number,
     ) {
-      const fieldStrength = 0.16 + agitation * 0.12 * turbulence + speechEnergy * 0.08;
+      const fieldStrength =
+        0.16 + agitation * 0.12 * turbulence + speechEnergy * 0.08;
       for (let i = 0; i < flowAnchors.length; i += 1) {
         const anchor = flowAnchors[i];
-        const wobble = (0.04 + turbulence * 0.08) + speechEnergy * 0.05;
+        const wobble = 0.04 + turbulence * 0.08 + speechEnergy * 0.05;
         anchor.current.set(
           anchor.base.x +
             Math.sin(elapsed * 0.08 + anchor.phase) * wobble +
@@ -1276,7 +1277,8 @@ export function ThoughtOrbScene({
             Math.sin(seed * 6.8 + elapsed * 0.6) * 0.02,
         );
         const particleSat = clamp(
-          (0.92 + orbitalBand * 0.18 + colorResponse * 0.2) * controls.saturation,
+          (0.92 + orbitalBand * 0.18 + colorResponse * 0.2) *
+            controls.saturation,
           0,
           1,
         );
@@ -1513,7 +1515,9 @@ export function ThoughtOrbScene({
       }
       sparkPositionAttr.needsUpdate = true;
       sparkMaterial.size =
-        0.26 + adaptiveResponse * 0.05 + clamp(activeBurstEnergy * 0.012, 0, 0.08);
+        0.26 +
+        adaptiveResponse * 0.05 +
+        clamp(activeBurstEnergy * 0.012, 0, 0.08);
       sparkMaterial.opacity =
         0.9 + speechEnergy * 0.16 + clamp(activeBurstEnergy * 0.08, 0, 0.1);
 
@@ -1601,7 +1605,9 @@ export function ThoughtOrbScene({
       fireflyOverlayColorAttr.needsUpdate = true;
 
       fireflyOverlayMaterial.size =
-        1.18 + adaptiveResponse * 0.12 + clamp(activeOverlayFireflies / 90, 0, 0.18);
+        1.18 +
+        adaptiveResponse * 0.12 +
+        clamp(activeOverlayFireflies / 90, 0, 0.18);
       fireflyOverlayMaterial.opacity =
         0.96 + clamp(activeOverlayFireflies / 24, 0, 0.04);
 
@@ -1649,19 +1655,19 @@ export function ThoughtOrbScene({
         <button
           type="button"
           onClick={() => setPanelOpen(!panelOpen)}
-        style={{
-          position: "absolute",
-          top: 14,
-          right: 14,
-          zIndex: 15,
-          border: "1px solid rgba(162, 227, 255, 0.22)",
-          borderRadius: 999,
-          padding: "0.55rem 0.9rem",
-          background: "rgba(0,0,0,0.48)",
-          color: "#dff6ff",
-          backdropFilter: "blur(10px)",
-          cursor: "pointer",
-        }}
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            zIndex: 15,
+            border: "1px solid rgba(162, 227, 255, 0.22)",
+            borderRadius: 999,
+            padding: "0.55rem 0.9rem",
+            background: "rgba(0,0,0,0.48)",
+            color: "#dff6ff",
+            backdropFilter: "blur(10px)",
+            cursor: "pointer",
+          }}
         >
           {panelOpen ? "Hide controls" : "Show controls"}
         </button>
@@ -1671,20 +1677,20 @@ export function ThoughtOrbScene({
         <button
           type="button"
           onClick={() => setMonitorOpen((v) => !v)}
-        style={{
-          position: "absolute",
-          top: 58,
-          right: 14,
-          zIndex: 15,
-          border: "1px solid rgba(162, 227, 255, 0.22)",
-          borderRadius: 999,
-          padding: "0.5rem 0.84rem",
-          background: "rgba(0,0,0,0.48)",
-          color: "#dff6ff",
-          backdropFilter: "blur(10px)",
-          cursor: "pointer",
-          fontSize: 12,
-        }}
+          style={{
+            position: "absolute",
+            top: 58,
+            right: 14,
+            zIndex: 15,
+            border: "1px solid rgba(162, 227, 255, 0.22)",
+            borderRadius: 999,
+            padding: "0.5rem 0.84rem",
+            background: "rgba(0,0,0,0.48)",
+            color: "#dff6ff",
+            backdropFilter: "blur(10px)",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
         >
           {monitorOpen ? "Hide audio monitor" : "Show audio monitor"}
         </button>
@@ -2291,7 +2297,9 @@ export function ThoughtOrbScene({
           />
           <PresetsPanel
             channel={channel}
-            getControls={() => controlsRef.current as unknown as Record<string, number>}
+            getControls={() =>
+              controlsRef.current as unknown as Record<string, number>
+            }
             onLoad={(data) => {
               Object.assign(controlsRef.current, data);
               forceRender((n) => n + 1);
