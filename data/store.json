@@ -119,5 +119,15 @@
         "fireflyFade": 1.05
       }
     }
+  },
+  "controls:voicemail": {
+    "value": {
+      "hue": 38,
+      "saturation": 100,
+      "intensity": 4,
+      "lineWidth": 8,
+      "glowBlur": 50,
+      "glowOpacity": 1
+    }
   }
 }
