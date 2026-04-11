@@ -13,7 +13,9 @@ const lerp = (from: number, to: number, alpha: number) =>
 export class AudioAnalyzer {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
+  private inputGainNode: GainNode | null = null;
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
+  private inputGain = 1;
   private previousPresence = 0;
   private smoothedLevel = 0;
   private smoothedPresence = 0;
@@ -45,10 +47,13 @@ export class AudioAnalyzer {
 
     this.audioContext = new AudioContextCtor();
     const source = this.audioContext.createMediaStreamSource(stream);
+    this.inputGainNode = this.audioContext.createGain();
+    this.inputGainNode.gain.value = this.inputGain;
     this.analyser = this.audioContext.createAnalyser();
     this.analyser.fftSize = 2048;
     this.analyser.smoothingTimeConstant = 0.68;
-    source.connect(this.analyser);
+    source.connect(this.inputGainNode);
+    this.inputGainNode.connect(this.analyser);
     this.dataArray = new Uint8Array(
       new ArrayBuffer(this.analyser.frequencyBinCount),
     );
@@ -58,6 +63,24 @@ export class AudioAnalyzer {
     if (this.audioContext?.state === "suspended") {
       await this.audioContext.resume();
     }
+  }
+
+  setInputGain(value: number) {
+    this.inputGain = Math.max(0, value);
+    if (!this.inputGainNode) return;
+    if (this.audioContext) {
+      this.inputGainNode.gain.setTargetAtTime(
+        this.inputGain,
+        this.audioContext.currentTime,
+        0.03,
+      );
+      return;
+    }
+    this.inputGainNode.gain.value = this.inputGain;
+  }
+
+  getInputGain() {
+    return this.inputGain;
   }
 
   getTimeDomainData(): Float32Array | null {

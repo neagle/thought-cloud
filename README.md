@@ -56,6 +56,8 @@ npm run dev
 | `F` | Toggle fullscreen |
 | `Escape` | Close palette / exit fullscreen |
 
+There is also a persistent **Audio Input Gain** slider in the lower-right UI. It boosts the incoming mic/feed before analysis, which is useful when the integrated show signal is quieter than direct local mic testing.
+
 ---
 
 ## QLab Integration
@@ -136,4 +138,3 @@ public/
   manifest.json         PWA manifest
   sw.js                 Service worker (cache-first for assets)
 ```
-

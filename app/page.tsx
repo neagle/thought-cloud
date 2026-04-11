@@ -12,6 +12,10 @@ import { AudioAnalyzer } from "@/lib/audio/AudioAnalyzer";
 import { TabSync } from "@/lib/sync/TabSync";
 import type { Channel } from "@/types";
 
+type AudioControls = {
+  inputGain: number;
+};
+
 const INITIAL_PRESENCE_CONTROLS: Controls = {
   masterIntensity: 1.65,
   idleDrift: 1.2,
@@ -50,15 +54,28 @@ const INITIAL_VOICEMAIL_CONTROLS: VoicemailControls = {
   glowOpacity: 0.55,
 };
 
+const INITIAL_AUDIO_CONTROLS: AudioControls = {
+  inputGain: 1,
+};
+
 export default function Page() {
   const [audioStarted, setAudioStarted] = useState(false);
-  const [audioAnalyzer, setAudioAnalyzer] = useState<AudioAnalyzer | null>(null);
+  const [audioAnalyzer, setAudioAnalyzer] = useState<AudioAnalyzer | null>(
+    null,
+  );
   const [audioError, setAudioError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [channel, setChannelState] = useState<Channel>("presence");
   const [kioskMode, setKioskMode] = useState(false);
-  const [presenceControls, setPresenceControls] = useState<Controls>(INITIAL_PRESENCE_CONTROLS);
-  const [voicemailControls, setVoicemailControls] = useState<VoicemailControls>(INITIAL_VOICEMAIL_CONTROLS);
+  const [presenceControls, setPresenceControls] = useState<Controls>(
+    INITIAL_PRESENCE_CONTROLS,
+  );
+  const [voicemailControls, setVoicemailControls] = useState<VoicemailControls>(
+    INITIAL_VOICEMAIL_CONTROLS,
+  );
+  const [audioControls, setAudioControls] = useState<AudioControls>(
+    INITIAL_AUDIO_CONTROLS,
+  );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -68,12 +85,22 @@ export default function Page() {
   const lastCueActionIdRef = useRef<string | null>(null);
   const audioStartedRef = useRef(false);
   const presenceControlsRef = useRef<Controls>(INITIAL_PRESENCE_CONTROLS);
-  const voicemailControlsRef = useRef<VoicemailControls>(INITIAL_VOICEMAIL_CONTROLS);
-  const [presenceTransitionDuration, setPresenceTransitionDuration] = useState(0);
-  const [voicemailTransitionDuration, setVoicemailTransitionDuration] = useState(0);
+  const voicemailControlsRef = useRef<VoicemailControls>(
+    INITIAL_VOICEMAIL_CONTROLS,
+  );
+  const audioControlsRef = useRef<AudioControls>(INITIAL_AUDIO_CONTROLS);
+  const [presenceTransitionDuration, setPresenceTransitionDuration] =
+    useState(0);
+  const [voicemailTransitionDuration, setVoicemailTransitionDuration] =
+    useState(0);
   // Debounce timers for KV persistence
-  const presenceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const voicemailSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const presenceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const voicemailSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const audioSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function setChannel(c: Channel) {
     setChannelState(c);
@@ -105,14 +132,17 @@ export default function Page() {
           fetch("/api/controls"),
         ]);
         if (cueRes.ok) {
-          const { channel: savedChannel } = (await cueRes.json()) as { channel: Channel };
+          const { channel: savedChannel } = (await cueRes.json()) as {
+            channel: Channel;
+          };
           setChannel(savedChannel);
           lastServerChannelRef.current = savedChannel;
         }
         if (ctrlRes.ok) {
-          const { presence, voicemail } = (await ctrlRes.json()) as {
+          const { presence, voicemail, audio } = (await ctrlRes.json()) as {
             presence: Record<string, number> | null;
             voicemail: Record<string, number> | null;
+            audio: Record<string, number> | null;
           };
           if (presence) {
             const c = presence as unknown as Controls;
@@ -123,6 +153,13 @@ export default function Page() {
             const c = voicemail as unknown as VoicemailControls;
             voicemailControlsRef.current = c;
             setVoicemailControls(c);
+          }
+          if (audio && typeof audio.inputGain === "number") {
+            const c = {
+              inputGain: audio.inputGain,
+            };
+            audioControlsRef.current = c;
+            setAudioControls(c);
           }
         }
       } catch {}
@@ -146,14 +183,28 @@ export default function Page() {
           const c = payload.data as unknown as VoicemailControls;
           voicemailControlsRef.current = c;
           setVoicemailControls(c);
+        } else if (payload.scope === "audio") {
+          const c = payload.data as unknown as AudioControls;
+          audioControlsRef.current = c;
+          setAudioControls(c);
         }
       } else if (payload.type === "request-state") {
         sync.broadcast({
           type: "state-response",
           channel: channelRef.current,
           controls: {
-            presence: presenceControlsRef.current as unknown as Record<string, number>,
-            voicemail: voicemailControlsRef.current as unknown as Record<string, number>,
+            presence: presenceControlsRef.current as unknown as Record<
+              string,
+              number
+            >,
+            voicemail: voicemailControlsRef.current as unknown as Record<
+              string,
+              number
+            >,
+            audio: audioControlsRef.current as unknown as Record<
+              string,
+              number
+            >,
           },
         });
       } else if (payload.type === "state-response") {
@@ -163,10 +214,13 @@ export default function Page() {
         lastServerChannelRef.current = payload.channel;
         const pc = payload.controls.presence as unknown as Controls;
         const vc = payload.controls.voicemail as unknown as VoicemailControls;
+        const ac = payload.controls.audio as unknown as AudioControls;
         presenceControlsRef.current = pc;
         voicemailControlsRef.current = vc;
+        audioControlsRef.current = ac;
         setPresenceControls(pc);
         setVoicemailControls(vc);
+        setAudioControls(ac);
       }
     });
 
@@ -182,12 +236,24 @@ export default function Page() {
     if (!audioStarted || audioStartedRef.current) return;
     audioStartedRef.current = true;
     const analyzer = new AudioAnalyzer();
-    analyzer.start().then(() => setAudioAnalyzer(analyzer)).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : "Could not start audio input.";
-      setAudioError(message);
-      audioStartedRef.current = false;
-    });
+    analyzer
+      .start()
+      .then(() => {
+        analyzer.setInputGain(audioControlsRef.current.inputGain);
+        setAudioAnalyzer(analyzer);
+      })
+      .catch((err: unknown) => {
+        const message =
+          err instanceof Error ? err.message : "Could not start audio input.";
+        setAudioError(message);
+        audioStartedRef.current = false;
+      });
   }, [audioStarted]);
+
+  useEffect(() => {
+    if (!audioAnalyzer) return;
+    audioAnalyzer.setInputGain(audioControls.inputGain);
+  }, [audioAnalyzer, audioControls]);
 
   // Poll /api/cue every 500ms for QLab-triggered changes
   useEffect(() => {
@@ -195,36 +261,73 @@ export default function Page() {
       try {
         const res = await fetch("/api/cue");
         if (!res.ok) return;
-        const { channel: serverChannel, pendingAction } = (await res.json()) as {
-          channel: Channel;
-          pendingAction: { id: string; type: string; channel?: Channel; scope?: Channel; data?: Record<string, number>; duration?: number; value?: boolean } | null;
-        };
+        const { channel: serverChannel, pendingAction } =
+          (await res.json()) as {
+            channel: Channel;
+            pendingAction: {
+              id: string;
+              type: string;
+              channel?: Channel;
+              scope?: Channel;
+              data?: Record<string, number>;
+              duration?: number;
+              value?: boolean;
+            } | null;
+          };
 
         if (serverChannel !== lastServerChannelRef.current) {
           lastServerChannelRef.current = serverChannel;
           setChannel(serverChannel);
-          syncRef.current?.broadcast({ type: "channel", channel: serverChannel });
+          syncRef.current?.broadcast({
+            type: "channel",
+            channel: serverChannel,
+          });
         }
 
         if (pendingAction && pendingAction.id !== lastCueActionIdRef.current) {
           lastCueActionIdRef.current = pendingAction.id;
-          if (pendingAction.type === "kiosk" && typeof pendingAction.value === "boolean") {
+          if (
+            pendingAction.type === "kiosk" &&
+            typeof pendingAction.value === "boolean"
+          ) {
             setKioskMode(pendingAction.value);
-          } else if ((pendingAction.type === "preset" || pendingAction.type === "controls") && pendingAction.scope && pendingAction.data) {
+          } else if (
+            (pendingAction.type === "preset" ||
+              pendingAction.type === "controls") &&
+            pendingAction.scope &&
+            pendingAction.data
+          ) {
             const { scope, data } = pendingAction;
-            const duration = typeof pendingAction.duration === "number" ? pendingAction.duration : 2.0;
+            const duration =
+              typeof pendingAction.duration === "number"
+                ? pendingAction.duration
+                : 2.0;
             if (scope === "presence") {
-              const merged = { ...presenceControlsRef.current, ...data } as Controls;
+              const merged = {
+                ...presenceControlsRef.current,
+                ...data,
+              } as Controls;
               presenceControlsRef.current = merged;
               setPresenceTransitionDuration(duration);
               setPresenceControls({ ...merged });
-              syncRef.current?.broadcast({ type: "controls", scope: "presence", data: merged as unknown as Record<string, number> });
+              syncRef.current?.broadcast({
+                type: "controls",
+                scope: "presence",
+                data: merged as unknown as Record<string, number>,
+              });
             } else if (scope === "voicemail") {
-              const merged = { ...voicemailControlsRef.current, ...data } as VoicemailControls;
+              const merged = {
+                ...voicemailControlsRef.current,
+                ...data,
+              } as VoicemailControls;
               voicemailControlsRef.current = merged;
               setVoicemailTransitionDuration(duration);
               setVoicemailControls({ ...merged });
-              syncRef.current?.broadcast({ type: "controls", scope: "voicemail", data: merged as unknown as Record<string, number> });
+              syncRef.current?.broadcast({
+                type: "controls",
+                scope: "voicemail",
+                data: merged as unknown as Record<string, number>,
+              });
             }
           }
         }
@@ -247,7 +350,9 @@ export default function Page() {
     function handleKey(e: KeyboardEvent) {
       if (
         (e.key === "f" || e.key === "F") &&
-        !e.metaKey && !e.ctrlKey && !e.altKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
         !(e.target instanceof HTMLInputElement)
       ) {
         toggleFullscreen();
@@ -292,7 +397,8 @@ export default function Page() {
       data: c as unknown as Record<string, number>,
     });
     // Debounced KV persist
-    if (presenceSaveTimerRef.current) clearTimeout(presenceSaveTimerRef.current);
+    if (presenceSaveTimerRef.current)
+      clearTimeout(presenceSaveTimerRef.current);
     presenceSaveTimerRef.current = setTimeout(() => {
       fetch("/api/controls", {
         method: "POST",
@@ -310,12 +416,31 @@ export default function Page() {
       scope: "voicemail",
       data: c as unknown as Record<string, number>,
     });
-    if (voicemailSaveTimerRef.current) clearTimeout(voicemailSaveTimerRef.current);
+    if (voicemailSaveTimerRef.current)
+      clearTimeout(voicemailSaveTimerRef.current);
     voicemailSaveTimerRef.current = setTimeout(() => {
       fetch("/api/controls", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scope: "voicemail", data: c }),
+      }).catch(() => {});
+    }, 1500);
+  }, []);
+
+  const handleAudioControlsChange = useCallback((c: AudioControls) => {
+    audioControlsRef.current = c;
+    setAudioControls({ ...c });
+    syncRef.current?.broadcast({
+      type: "controls",
+      scope: "audio",
+      data: c as unknown as Record<string, number>,
+    });
+    if (audioSaveTimerRef.current) clearTimeout(audioSaveTimerRef.current);
+    audioSaveTimerRef.current = setTimeout(() => {
+      fetch("/api/controls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "audio", data: c }),
       }).catch(() => {});
     }, 1500);
   }, []);
@@ -368,6 +493,70 @@ export default function Page() {
       {/* Channel switcher — hidden in kiosk mode */}
       {!kioskMode ? (
         <ChannelSwitcher channel={channel} onSetChannel={handleSetChannel} />
+      ) : null}
+
+      {!kioskMode ? (
+        <div
+          style={{
+            position: "absolute",
+            right: 14,
+            bottom: 14,
+            width: 240,
+            zIndex: 15,
+            padding: 12,
+            borderRadius: 16,
+            background: "rgba(5, 10, 18, 0.72)",
+            border: "1px solid rgba(145, 225, 255, 0.14)",
+            backdropFilter: "blur(16px)",
+            boxShadow: "0 0 28px rgba(0,0,0,0.32)",
+            color: "#dff6ff",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: "0.03em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            <span>Audio Input Gain</span>
+            <span style={{ opacity: 0.74 }}>
+              {audioControls.inputGain.toFixed(2)}x
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0.25}
+            max={20}
+            step={0.05}
+            value={audioControls.inputGain}
+            onChange={(e) =>
+              handleAudioControlsChange({
+                inputGain: Number(e.target.value),
+              })
+            }
+            style={{
+              width: "100%",
+              accentColor: "#7fe8ff",
+              marginBottom: 8,
+            }}
+          />
+          <div
+            style={{
+              fontSize: 11,
+              lineHeight: 1.35,
+              opacity: 0.74,
+            }}
+          >
+            Scales the mic before analysis. Raise it when the integrated show
+            feed is coming in softer than local mic testing.
+          </div>
+        </div>
       ) : null}
 
       {/* Start overlay */}

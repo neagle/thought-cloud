@@ -129,5 +129,10 @@
       "glowBlur": 50,
       "glowOpacity": 1
     }
+  },
+  "controls:audio": {
+    "value": {
+      "inputGain": 3.15
+    }
   }
 }

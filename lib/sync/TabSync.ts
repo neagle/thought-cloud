@@ -2,7 +2,11 @@ import type { Channel } from "@/types";
 
 export type SyncPayload =
   | { type: "channel"; channel: Channel }
-  | { type: "controls"; scope: "presence" | "voicemail"; data: Record<string, number> }
+  | {
+      type: "controls";
+      scope: "presence" | "voicemail" | "audio";
+      data: Record<string, number>;
+    }
   | { type: "request-state" }
   | {
       type: "state-response";
@@ -10,6 +14,7 @@ export type SyncPayload =
       controls: {
         presence: Record<string, number>;
         voicemail: Record<string, number>;
+        audio: Record<string, number>;
       };
     };
 

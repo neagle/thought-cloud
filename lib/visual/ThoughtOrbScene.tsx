@@ -416,6 +416,8 @@ export function ThoughtOrbScene({
     );
 
     const particleCount = 980;
+    // const particleCount = 2980;
+    // const particleCount = 80;
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
     const seeds = new Float32Array(particleCount);
@@ -1801,7 +1803,7 @@ export function ThoughtOrbScene({
               onControlsChange?.(controlsRef.current);
             }}
           />
-          <Control
+          {/* <Control
             label="Spark threshold (monitor)"
             helpText="Minimum attack needed to trigger spark bursts. Lower values create more frequent highlight pops; higher values reserve them for stronger syllables."
             min={0.01}
@@ -1813,7 +1815,7 @@ export function ThoughtOrbScene({
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}
-          />
+          /> */}
           <Control
             label="Sustain backoff (monitor)"
             helpText="Habituation amount for sustained tones/noise. Higher values back off steady response and re-emphasize new changes/attacks."
@@ -1827,7 +1829,7 @@ export function ThoughtOrbScene({
               onControlsChange?.(controlsRef.current);
             }}
           />
-          <Control
+          {/* <Control
             label="Firefly chance (monitor)"
             helpText="Probability per-particle for accent-hue firefly sparks during attack/novelty. Higher creates more frequent dramatic color contrast."
             min={0}
@@ -1865,7 +1867,7 @@ export function ThoughtOrbScene({
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}
-          />
+          /> */}
           <div
             style={{
               fontSize: 11,
@@ -2040,7 +2042,7 @@ export function ThoughtOrbScene({
               onControlsChange?.(controlsRef.current);
             }}
           />
-          <Control
+          {/* <Control
             label="Halo strength"
             helpText="Brightness of the outer ambient glow around the cloud."
             min={0.2}
@@ -2052,7 +2054,7 @@ export function ThoughtOrbScene({
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}
-          />
+          /> */}
           <Control
             label="Core strength"
             helpText="Brightness of the inner nucleus; useful for readability from a distance."
@@ -2256,7 +2258,7 @@ export function ThoughtOrbScene({
               onControlsChange?.(controlsRef.current);
             }}
           />
-          <Control
+          {/* <Control
             label="Firefly chance"
             helpText="Probability per-particle for accent-hue firefly sparks during attack/novelty. Higher creates more frequent dramatic color contrast."
             min={0}
@@ -2268,8 +2270,8 @@ export function ThoughtOrbScene({
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}
-          />
-          <Control
+          /> */}
+          {/* <Control
             label="Firefly hold"
             helpText="Time (seconds) each firefly remains at full accent intensity before fading. Longer hold makes each firefly event more dramatic."
             min={0}
@@ -2294,7 +2296,7 @@ export function ThoughtOrbScene({
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}
-          />
+          /> */}
           <PresetsPanel
             channel={channel}
             getControls={() =>
