@@ -543,7 +543,7 @@ export function ThoughtOrbScene({
     });
     const halo = new THREE.Sprite(haloMaterial);
     halo.scale.set(8.8, 8.8, 1);
-    scene.add(halo);
+    // scene.add(halo);
 
     const outerHaloMaterial = new THREE.SpriteMaterial({
       map: haloTexture,
