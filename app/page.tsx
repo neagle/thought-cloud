@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StartOverlay } from "@/components/StartOverlay";
 import { CommandPalette } from "@/components/CommandPalette";
-import { ChannelSwitcher } from "@/components/ChannelSwitcher";
+import { Toolbar } from "@/components/Toolbar";
 import { ThoughtOrbScene } from "@/lib/visual/ThoughtOrbScene";
 import type { Controls } from "@/lib/visual/ThoughtOrbScene";
 import { OscilloscopeOverlay } from "@/lib/visual/OscilloscopeOverlay";
@@ -13,7 +13,8 @@ import { TabSync } from "@/lib/sync/TabSync";
 import type { Channel } from "@/types";
 
 type AudioControls = {
-  inputGain: number;
+  presenceInputGain: number;
+  voicemailInputGain: number;
 };
 
 const INITIAL_PRESENCE_CONTROLS: Controls = {
@@ -55,7 +56,8 @@ const INITIAL_VOICEMAIL_CONTROLS: VoicemailControls = {
 };
 
 const INITIAL_AUDIO_CONTROLS: AudioControls = {
-  inputGain: 1,
+  presenceInputGain: 1,
+  voicemailInputGain: 1,
 };
 
 export default function Page() {
@@ -154,9 +156,17 @@ export default function Page() {
             voicemailControlsRef.current = c;
             setVoicemailControls(c);
           }
-          if (audio && typeof audio.inputGain === "number") {
-            const c = {
-              inputGain: audio.inputGain,
+          if (audio && typeof (audio as Record<string, number>).inputGain === "number") {
+            // backward-compat: old single-gain format
+            const gain = (audio as Record<string, number>).inputGain;
+            const c: AudioControls = { presenceInputGain: gain, voicemailInputGain: gain };
+            audioControlsRef.current = c;
+            setAudioControls(c);
+          } else if (audio && ("presenceInputGain" in audio || "voicemailInputGain" in audio)) {
+            const raw = audio as Record<string, number>;
+            const c: AudioControls = {
+              presenceInputGain: raw.presenceInputGain ?? 1,
+              voicemailInputGain: raw.voicemailInputGain ?? 1,
             };
             audioControlsRef.current = c;
             setAudioControls(c);
@@ -239,7 +249,11 @@ export default function Page() {
     analyzer
       .start()
       .then(() => {
-        analyzer.setInputGain(audioControlsRef.current.inputGain);
+        const initialGain =
+          channelRef.current === "presence"
+            ? audioControlsRef.current.presenceInputGain
+            : audioControlsRef.current.voicemailInputGain;
+        analyzer.setInputGain(initialGain);
         setAudioAnalyzer(analyzer);
       })
       .catch((err: unknown) => {
@@ -252,8 +266,12 @@ export default function Page() {
 
   useEffect(() => {
     if (!audioAnalyzer) return;
-    audioAnalyzer.setInputGain(audioControls.inputGain);
-  }, [audioAnalyzer, audioControls]);
+    const gain =
+      channel === "presence"
+        ? audioControls.presenceInputGain
+        : audioControls.voicemailInputGain;
+    audioAnalyzer.setInputGain(gain);
+  }, [audioAnalyzer, audioControls, channel]);
 
   // Poll /api/cue every 500ms for QLab-triggered changes
   useEffect(() => {
@@ -468,7 +486,6 @@ export default function Page() {
         <ThoughtOrbScene
           audioStarted={audioStarted}
           panelOpen={panelOpen}
-          setPanelOpen={setPanelOpen}
           initialControls={INITIAL_PRESENCE_CONTROLS}
           audioAnalyzer={audioAnalyzer}
           kioskMode={kioskMode}
@@ -476,6 +493,13 @@ export default function Page() {
           externalControls={presenceControls}
           transitionDuration={presenceTransitionDuration}
           onControlsChange={handlePresenceControlsChange}
+          inputGain={audioControls.presenceInputGain}
+          onInputGainChange={(v) =>
+            handleAudioControlsChange({
+              ...audioControls,
+              presenceInputGain: v,
+            })
+          }
         />
       </div>
 
@@ -488,76 +512,27 @@ export default function Page() {
         externalControls={voicemailControls}
         transitionDuration={voicemailTransitionDuration}
         onControlsChange={handleVoicemailControlsChange}
+        panelOpen={panelOpen}
+        inputGain={audioControls.voicemailInputGain}
+        onInputGainChange={(v) =>
+          handleAudioControlsChange({
+            ...audioControls,
+            voicemailInputGain: v,
+          })
+        }
       />
 
-      {/* Channel switcher — hidden in kiosk mode */}
-      {!kioskMode ? (
-        <ChannelSwitcher channel={channel} onSetChannel={handleSetChannel} />
-      ) : null}
-
-      {!kioskMode ? (
-        <div
-          style={{
-            position: "absolute",
-            right: 14,
-            bottom: 14,
-            width: 240,
-            zIndex: 15,
-            padding: 12,
-            borderRadius: 16,
-            background: "rgba(5, 10, 18, 0.72)",
-            border: "1px solid rgba(145, 225, 255, 0.14)",
-            backdropFilter: "blur(16px)",
-            boxShadow: "0 0 28px rgba(0,0,0,0.32)",
-            color: "#dff6ff",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: "0.03em",
-              textTransform: "uppercase",
-              marginBottom: 8,
-            }}
-          >
-            <span>Audio Input Gain</span>
-            <span style={{ opacity: 0.74 }}>
-              {audioControls.inputGain.toFixed(2)}x
-            </span>
-          </div>
-          <input
-            type="range"
-            min={0.25}
-            max={20}
-            step={0.05}
-            value={audioControls.inputGain}
-            onChange={(e) =>
-              handleAudioControlsChange({
-                inputGain: Number(e.target.value),
-              })
-            }
-            style={{
-              width: "100%",
-              accentColor: "#7fe8ff",
-              marginBottom: 8,
-            }}
-          />
-          <div
-            style={{
-              fontSize: 11,
-              lineHeight: 1.35,
-              opacity: 0.74,
-            }}
-          >
-            Scales the mic before analysis. Raise it when the integrated show
-            feed is coming in softer than local mic testing.
-          </div>
-        </div>
-      ) : null}
+      {/* Toolbar — hidden in kiosk mode */}
+      <Toolbar
+        channel={channel}
+        onSetChannel={handleSetChannel}
+        panelOpen={panelOpen}
+        onTogglePanel={() => setPanelOpen((v) => !v)}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
+        kioskMode={kioskMode}
+        onEnterKiosk={() => setKioskMode(true)}
+      />
 
       {/* Start overlay */}
       {!audioStarted ? (

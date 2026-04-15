@@ -38,7 +38,6 @@ export type Controls = {
 interface Props {
   audioStarted: boolean;
   panelOpen: boolean;
-  setPanelOpen: (open: boolean) => void;
   initialControls: Controls;
   audioAnalyzer: AudioAnalyzer | null;
   kioskMode: boolean;
@@ -47,6 +46,8 @@ interface Props {
   transitionDuration?: number;
   onControlsChange?: (c: Controls) => void;
   onLoadPreset?: (data: Record<string, number>) => void;
+  inputGain?: number;
+  onInputGainChange?: (v: number) => void;
 }
 
 type Spark = {
@@ -243,7 +244,6 @@ function randomUnitVector() {
 export function ThoughtOrbScene({
   audioStarted,
   panelOpen,
-  setPanelOpen,
   initialControls,
   audioAnalyzer,
   kioskMode,
@@ -252,6 +252,8 @@ export function ThoughtOrbScene({
   transitionDuration = 0,
   onControlsChange,
   onLoadPreset,
+  inputGain,
+  onInputGainChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<Controls>(initialControls);
@@ -1653,243 +1655,13 @@ export function ThoughtOrbScene({
     <>
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
 
-      {!kioskMode ? (
-        <button
-          type="button"
-          onClick={() => setPanelOpen(!panelOpen)}
-          style={{
-            position: "absolute",
-            top: 14,
-            right: 14,
-            zIndex: 15,
-            border: "1px solid rgba(162, 227, 255, 0.22)",
-            borderRadius: 999,
-            padding: "0.55rem 0.9rem",
-            background: "rgba(0,0,0,0.48)",
-            color: "#dff6ff",
-            backdropFilter: "blur(10px)",
-            cursor: "pointer",
-          }}
-        >
-          {panelOpen ? "Hide controls" : "Show controls"}
-        </button>
-      ) : null}
-
-      {!kioskMode ? (
-        <button
-          type="button"
-          onClick={() => setMonitorOpen((v) => !v)}
-          style={{
-            position: "absolute",
-            top: 58,
-            right: 14,
-            zIndex: 15,
-            border: "1px solid rgba(162, 227, 255, 0.22)",
-            borderRadius: 999,
-            padding: "0.5rem 0.84rem",
-            background: "rgba(0,0,0,0.48)",
-            color: "#dff6ff",
-            backdropFilter: "blur(10px)",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
-        >
-          {monitorOpen ? "Hide audio monitor" : "Show audio monitor"}
-        </button>
-      ) : null}
-
-      {!kioskMode && monitorOpen ? (
-        <div
-          style={{
-            position: "absolute",
-            top: 96,
-            right: 14,
-            width: 360,
-            zIndex: 15,
-            padding: 12,
-            borderRadius: 16,
-            background: "rgba(5, 10, 18, 0.72)",
-            border: "1px solid rgba(145, 225, 255, 0.14)",
-            backdropFilter: "blur(16px)",
-            boxShadow: "0 0 28px rgba(0,0,0,0.32)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              marginBottom: 8,
-              letterSpacing: "0.03em",
-              textTransform: "uppercase",
-            }}
-          >
-            Audio Tuning Monitor
-          </div>
-          <canvas
-            ref={monitorCanvasRef}
-            width={336}
-            height={126}
-            style={{
-              width: "100%",
-              borderRadius: 10,
-              border: "1px solid rgba(160,220,255,0.14)",
-              marginBottom: 8,
-            }}
-          />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 6,
-              marginBottom: 10,
-              fontSize: 11,
-            }}
-          >
-            {MONITOR_SERIES.map((series) => {
-              const value = monitorSignalsRef.current[series.key] ?? 0;
-              return (
-                <div key={series.key} style={{ display: "grid", gap: 2 }}>
-                  <div
-                    style={{ display: "flex", justifyContent: "space-between" }}
-                  >
-                    <span style={{ color: series.color }}>{series.label}</span>
-                    <span style={{ opacity: 0.72 }}>{value.toFixed(2)}</span>
-                  </div>
-                  <div
-                    style={{
-                      height: 6,
-                      borderRadius: 999,
-                      background: "rgba(160,210,240,0.14)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${clamp(value, 0, 1) * 100}%`,
-                        height: "100%",
-                        background: series.color,
-                        opacity: 0.85,
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <Control
-            label="Speech bias (monitor)"
-            helpText="How strongly speech presence is interpreted as intent/activity. Raise to make spoken words drive motion sooner and more intensely."
-            min={0.4}
-            max={2}
-            step={0.01}
-            value={controlsRef.current.speechBias}
-            onChange={(v) => {
-              controlsRef.current.speechBias = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          />
-          <Control
-            label="Agitation gain (monitor)"
-            helpText="Scales how much audio energy turns into internal current speed and turbulence. Higher values feel more animated in speech peaks."
-            min={0}
-            max={5}
-            step={0.01}
-            value={controlsRef.current.agitationGain}
-            onChange={(v) => {
-              controlsRef.current.agitationGain = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          />
-          {/* <Control
-            label="Spark threshold (monitor)"
-            helpText="Minimum attack needed to trigger spark bursts. Lower values create more frequent highlight pops; higher values reserve them for stronger syllables."
-            min={0.01}
-            max={0.5}
-            step={0.005}
-            value={controlsRef.current.sparkThreshold}
-            onChange={(v) => {
-              controlsRef.current.sparkThreshold = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          /> */}
-          <Control
-            label="Sustain backoff (monitor)"
-            helpText="Habituation amount for sustained tones/noise. Higher values back off steady response and re-emphasize new changes/attacks."
-            min={0}
-            max={1}
-            step={0.01}
-            value={controlsRef.current.sustainBackoff}
-            onChange={(v) => {
-              controlsRef.current.sustainBackoff = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          />
-          {/* <Control
-            label="Firefly chance (monitor)"
-            helpText="Probability per-particle for accent-hue firefly sparks during attack/novelty. Higher creates more frequent dramatic color contrast."
-            min={0}
-            max={1}
-            step={0.005}
-            value={controlsRef.current.fireflyChance}
-            onChange={(v) => {
-              controlsRef.current.fireflyChance = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          />
-          <Control
-            label="Firefly hold (monitor)"
-            helpText="Time (seconds) each firefly remains at full accent intensity before fading. Longer hold makes each firefly event more dramatic."
-            min={0}
-            max={1.2}
-            step={0.01}
-            value={controlsRef.current.fireflyHold}
-            onChange={(v) => {
-              controlsRef.current.fireflyHold = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          />
-          <Control
-            label="Firefly fade (monitor)"
-            helpText="Time (seconds) each firefly takes to fade back to base color after hold. Longer fades feel more atmospheric; shorter are punchier."
-            min={0.1}
-            max={2.5}
-            step={0.01}
-            value={controlsRef.current.fireflyFade}
-            onChange={(v) => {
-              controlsRef.current.fireflyFade = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          /> */}
-          <div
-            style={{
-              fontSize: 11,
-              opacity: 0.72,
-              marginTop: 4,
-              lineHeight: 1.35,
-            }}
-          >
-            Target for female speech: keep Presence and Response clearly above
-            Level during syllables, with Attack peaks causing visible spark/flow
-            punctuations.
-          </div>
-        </div>
-      ) : null}
-
       {!kioskMode && panelOpen ? (
         <div
           style={{
             position: "absolute",
-            top: 14,
-            left: 14,
-            width: 300,
+            top: 66,
+            right: 14,
+            width: 360,
             zIndex: 15,
             padding: 14,
             borderRadius: 16,
@@ -1897,8 +1669,9 @@ export function ThoughtOrbScene({
             border: "1px solid rgba(145, 225, 255, 0.14)",
             backdropFilter: "blur(16px)",
             boxShadow: "0 0 28px rgba(0,0,0,0.32)",
-            maxHeight: "90vh",
+            maxHeight: "calc(100vh - 80px)",
             overflowY: "auto",
+            color: "#dff6ff",
           }}
         >
           <div
@@ -1908,9 +1681,73 @@ export function ThoughtOrbScene({
               marginBottom: 10,
               letterSpacing: "0.03em",
               textTransform: "uppercase",
+              opacity: 0.7,
             }}
           >
-            Thought Cloud Tuning
+            Presence
+          </div>
+
+          {/* Presets — elevated to top */}
+          <PresetsPanel
+            channel={channel}
+            getControls={() =>
+              controlsRef.current as unknown as Record<string, number>
+            }
+            onLoad={(data) => {
+              Object.assign(controlsRef.current, data);
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+              onLoadPreset?.(data);
+            }}
+          />
+
+          {/* Input Gain — per-channel */}
+          {onInputGainChange !== undefined ? (
+            <div style={{ marginTop: 14, marginBottom: 4 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  marginBottom: 6,
+                  letterSpacing: "0.05em",
+                  textTransform: "uppercase",
+                  opacity: 0.7,
+                }}
+              >
+                Audio Input
+              </div>
+              <Control
+                label="Input gain"
+                helpText="Scales the mic before analysis. Raise when the show feed is softer than local mic testing."
+                min={0.25}
+                max={20}
+                step={0.05}
+                value={inputGain ?? 1}
+                onChange={(v) => onInputGainChange(v)}
+              />
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              height: 1,
+              background: "rgba(145, 225, 255, 0.1)",
+              margin: "10px 0 14px",
+            }}
+          />
+
+          {/* Motion controls */}
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              marginBottom: 8,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              opacity: 0.7,
+            }}
+          >
+            Motion
           </div>
           <Control
             label="Master intensity"
@@ -2042,19 +1879,27 @@ export function ThoughtOrbScene({
               onControlsChange?.(controlsRef.current);
             }}
           />
-          {/* <Control
-            label="Halo strength"
-            helpText="Brightness of the outer ambient glow around the cloud."
-            min={0.2}
-            max={2}
-            step={0.01}
-            value={controlsRef.current.haloStrength}
-            onChange={(v) => {
-              controlsRef.current.haloStrength = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
+
+          {/* Core */}
+          <div
+            style={{
+              height: 1,
+              background: "rgba(145, 225, 255, 0.1)",
+              margin: "10px 0 14px",
             }}
-          /> */}
+          />
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              marginBottom: 8,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              opacity: 0.7,
+            }}
+          >
+            Core &amp; Glow
+          </div>
           <Control
             label="Core strength"
             helpText="Brightness of the inner nucleus; useful for readability from a distance."
@@ -2134,15 +1979,23 @@ export function ThoughtOrbScene({
               onControlsChange?.(controlsRef.current);
             }}
           />
+
+          {/* Color Dynamics */}
+          <div
+            style={{
+              height: 1,
+              background: "rgba(145, 225, 255, 0.1)",
+              margin: "10px 0 14px",
+            }}
+          />
           <div
             style={{
               fontSize: 11,
               fontWeight: 700,
-              marginTop: 8,
-              marginBottom: 6,
-              letterSpacing: "0.03em",
+              marginBottom: 8,
+              letterSpacing: "0.05em",
               textTransform: "uppercase",
-              opacity: 0.82,
+              opacity: 0.7,
             }}
           >
             Color Dynamics
@@ -2152,7 +2005,7 @@ export function ThoughtOrbScene({
               display: "grid",
               gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: 6,
-              marginBottom: 8,
+              marginBottom: 10,
             }}
           >
             {COLOR_PRESETS.map((preset) => (
@@ -2166,11 +2019,11 @@ export function ThoughtOrbScene({
                 style={{
                   border: "1px solid rgba(162, 227, 255, 0.22)",
                   borderRadius: 999,
-                  padding: "0.34rem 0.52rem",
+                  padding: "0.4rem 0.52rem",
                   background: "rgba(0,0,0,0.34)",
                   color: "#dff6ff",
                   cursor: "pointer",
-                  fontSize: 11,
+                  fontSize: 12,
                 }}
               >
                 {preset.name}
@@ -2258,57 +2111,149 @@ export function ThoughtOrbScene({
               onControlsChange?.(controlsRef.current);
             }}
           />
-          {/* <Control
-            label="Firefly chance"
-            helpText="Probability per-particle for accent-hue firefly sparks during attack/novelty. Higher creates more frequent dramatic color contrast."
-            min={0}
-            max={1}
-            step={0.005}
-            value={controlsRef.current.fireflyChance}
-            onChange={(v) => {
-              controlsRef.current.fireflyChance = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          /> */}
-          {/* <Control
-            label="Firefly hold"
-            helpText="Time (seconds) each firefly remains at full accent intensity before fading. Longer hold makes each firefly event more dramatic."
-            min={0}
-            max={1.2}
-            step={0.01}
-            value={controlsRef.current.fireflyHold}
-            onChange={(v) => {
-              controlsRef.current.fireflyHold = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
+
+          {/* Audio Monitor — collapsible accordion at bottom */}
+          <div
+            style={{
+              height: 1,
+              background: "rgba(145, 225, 255, 0.1)",
+              margin: "14px 0 0",
             }}
           />
-          <Control
-            label="Firefly fade"
-            helpText="Time (seconds) each firefly takes to fade back to base color after hold. Longer fades feel more atmospheric; shorter are punchier."
-            min={0.1}
-            max={2.5}
-            step={0.01}
-            value={controlsRef.current.fireflyFade}
-            onChange={(v) => {
-              controlsRef.current.fireflyFade = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
+          <button
+            type="button"
+            onClick={() => setMonitorOpen((v) => !v)}
+            style={{
+              display: "block",
+              width: "100%",
+              marginTop: 10,
+              padding: "0.65rem 0",
+              background: "rgba(162,227,255,0.04)",
+              border: "1px solid rgba(162,227,255,0.14)",
+              borderRadius: 8,
+              color: "#c8eeff",
+              fontSize: 13,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              cursor: "pointer",
             }}
-          /> */}
-          <PresetsPanel
-            channel={channel}
-            getControls={() =>
-              controlsRef.current as unknown as Record<string, number>
-            }
-            onLoad={(data) => {
-              Object.assign(controlsRef.current, data);
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-              onLoadPreset?.(data);
-            }}
-          />
+          >
+            {monitorOpen ? "▾ Audio Monitor" : "▸ Audio Monitor"}
+          </button>
+
+          {monitorOpen ? (
+            <div style={{ marginTop: 10 }}>
+              <canvas
+                ref={monitorCanvasRef}
+                width={332}
+                height={126}
+                style={{
+                  width: "100%",
+                  borderRadius: 10,
+                  border: "1px solid rgba(160,220,255,0.14)",
+                  marginBottom: 8,
+                }}
+              />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                  marginBottom: 10,
+                  fontSize: 11,
+                }}
+              >
+                {MONITOR_SERIES.map((series) => {
+                  const value = monitorSignalsRef.current[series.key] ?? 0;
+                  return (
+                    <div key={series.key} style={{ display: "grid", gap: 2 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span style={{ color: series.color }}>
+                          {series.label}
+                        </span>
+                        <span style={{ opacity: 0.72 }}>
+                          {value.toFixed(2)}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          height: 6,
+                          borderRadius: 999,
+                          background: "rgba(160,210,240,0.14)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${clamp(value, 0, 1) * 100}%`,
+                            height: "100%",
+                            background: series.color,
+                            opacity: 0.85,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <Control
+                label="Speech bias"
+                helpText="How strongly speech presence is interpreted as intent/activity. Raise to make spoken words drive motion sooner and more intensely."
+                min={0.4}
+                max={2}
+                step={0.01}
+                value={controlsRef.current.speechBias}
+                onChange={(v) => {
+                  controlsRef.current.speechBias = v;
+                  forceRender((n) => n + 1);
+                  onControlsChange?.(controlsRef.current);
+                }}
+              />
+              <Control
+                label="Agitation gain"
+                helpText="Scales how much audio energy turns into internal current speed and turbulence. Higher values feel more animated in speech peaks."
+                min={0}
+                max={5}
+                step={0.01}
+                value={controlsRef.current.agitationGain}
+                onChange={(v) => {
+                  controlsRef.current.agitationGain = v;
+                  forceRender((n) => n + 1);
+                  onControlsChange?.(controlsRef.current);
+                }}
+              />
+              <Control
+                label="Sustain backoff"
+                helpText="Habituation amount for sustained tones/noise. Higher values back off steady response and re-emphasize new changes/attacks."
+                min={0}
+                max={1}
+                step={0.01}
+                value={controlsRef.current.sustainBackoff}
+                onChange={(v) => {
+                  controlsRef.current.sustainBackoff = v;
+                  forceRender((n) => n + 1);
+                  onControlsChange?.(controlsRef.current);
+                }}
+              />
+              <div
+                style={{
+                  fontSize: 11,
+                  opacity: 0.72,
+                  marginTop: 4,
+                  lineHeight: 1.35,
+                }}
+              >
+                Target for female speech: keep Presence and Response clearly
+                above Level during syllables, with Attack peaks causing visible
+                spark/flow punctuations.
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -2357,14 +2302,14 @@ function Control({
   onChange,
 }: ControlProps) {
   return (
-    <label style={{ display: "block", marginBottom: 10 }}>
+    <label style={{ display: "block", marginBottom: 12 }}>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           gap: 12,
-          fontSize: 12,
-          marginBottom: 4,
+          fontSize: 13,
+          marginBottom: 5,
         }}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>

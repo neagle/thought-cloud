@@ -13,7 +13,7 @@ export function PresetsPanel({ channel, getControls, onLoad }: Props) {
   const [presets, setPresets] = useState<Record<string, Record<string, number>>>({});
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
 
   async function fetchPresets() {
     try {
@@ -70,12 +70,12 @@ export function PresetsPanel({ channel, getControls, onLoad }: Props) {
           display: "block",
           width: "100%",
           marginTop: 14,
-          padding: "0.5rem 0",
+          padding: "0.65rem 0",
           background: "rgba(162,227,255,0.06)",
           border: "1px solid rgba(162,227,255,0.16)",
           borderRadius: 8,
           color: "#c8eeff",
-          fontSize: 12,
+          fontSize: 13,
           letterSpacing: "0.05em",
           textTransform: "uppercase",
           cursor: "pointer",
@@ -98,12 +98,12 @@ export function PresetsPanel({ channel, getControls, onLoad }: Props) {
               placeholder="Preset name…"
               style={{
                 flex: 1,
-                padding: "0.35rem 0.5rem",
+                padding: "0.5rem 0.6rem",
                 background: "rgba(0,0,0,0.35)",
                 border: "1px solid rgba(162,227,255,0.18)",
                 borderRadius: 6,
                 color: "#dff6ff",
-                fontSize: 12,
+                fontSize: 13,
               }}
             />
             <button
@@ -111,12 +111,12 @@ export function PresetsPanel({ channel, getControls, onLoad }: Props) {
               disabled={!saveName.trim() || saving}
               onClick={() => handleSave()}
               style={{
-                padding: "0.35rem 0.7rem",
+                padding: "0.5rem 0.9rem",
                 background: "rgba(100,200,255,0.14)",
                 border: "1px solid rgba(162,227,255,0.2)",
                 borderRadius: 6,
                 color: "#dff6ff",
-                fontSize: 12,
+                fontSize: 13,
                 cursor: "pointer",
                 opacity: !saveName.trim() || saving ? 0.4 : 1,
               }}
@@ -141,19 +141,20 @@ export function PresetsPanel({ channel, getControls, onLoad }: Props) {
                   marginBottom: 5,
                 }}
               >
-                <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ flex: 1, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {name}
                 </span>
                 <button
                   type="button"
                   onClick={() => onLoad(presets[name])}
                   style={{
-                    padding: "0.25rem 0.5rem",
+                    padding: "0.4rem 0.7rem",
+                    minHeight: 36,
                     background: "rgba(100,200,255,0.12)",
                     border: "1px solid rgba(162,227,255,0.18)",
                     borderRadius: 5,
                     color: "#9ee8ff",
-                    fontSize: 11,
+                    fontSize: 12,
                     cursor: "pointer",
                   }}
                 >
@@ -163,12 +164,13 @@ export function PresetsPanel({ channel, getControls, onLoad }: Props) {
                   type="button"
                   onClick={() => handleDelete(name)}
                   style={{
-                    padding: "0.25rem 0.5rem",
+                    padding: "0.4rem 0.7rem",
+                    minHeight: 36,
                     background: "transparent",
                     border: "1px solid rgba(255,100,100,0.2)",
                     borderRadius: 5,
                     color: "rgba(255,140,140,0.7)",
-                    fontSize: 11,
+                    fontSize: 12,
                     cursor: "pointer",
                   }}
                 >

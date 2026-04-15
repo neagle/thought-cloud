@@ -31,6 +31,9 @@ interface Props {
   externalControls?: VoicemailControls;
   transitionDuration?: number;
   onControlsChange?: (c: VoicemailControls) => void;
+  panelOpen: boolean;
+  inputGain?: number;
+  onInputGainChange?: (v: number) => void;
 }
 
 interface ControlProps {
@@ -45,13 +48,13 @@ interface ControlProps {
 
 function Control({ label, min, max, step, value, onChange, hue }: ControlProps) {
   return (
-    <label style={{ display: "block", marginBottom: 10 }}>
+    <label style={{ display: "block", marginBottom: 12 }}>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          fontSize: 12,
-          marginBottom: 4,
+          fontSize: 13,
+          marginBottom: 5,
         }}
       >
         <span>{label}</span>
@@ -73,7 +76,7 @@ function Control({ label, min, max, step, value, onChange, hue }: ControlProps) 
   );
 }
 
-export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, channel, externalControls, transitionDuration = 0, onControlsChange }: Props) {
+export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, channel, externalControls, transitionDuration = 0, onControlsChange, panelOpen, inputGain, onInputGainChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number>(0);
   const analyzerRef = useRef<AudioAnalyzer | null>(audioAnalyzer);
@@ -84,7 +87,6 @@ export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, channel
     startMs: number;
     durationMs: number;
   } | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
   const [, forceRender] = useState(0);
 
   useEffect(() => {
@@ -217,45 +219,22 @@ export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, channel
         }}
       />
 
-      {/* Show/hide controls button — only visible in voicemail mode and not kiosk */}
-      {visible && !kioskMode ? (
-        <button
-          type="button"
-          onClick={() => setPanelOpen((v) => !v)}
-          style={{
-            position: "absolute",
-            top: 14,
-            right: 14,
-            zIndex: 15,
-            border: "1px solid rgba(255, 190, 80, 0.25)",
-            borderRadius: 999,
-            padding: "0.55rem 0.9rem",
-            background: "rgba(0,0,0,0.48)",
-            color: "#ffe9b0",
-            backdropFilter: "blur(10px)",
-            cursor: "pointer",
-          }}
-        >
-          {panelOpen ? "Hide voicemail controls" : "Show voicemail controls"}
-        </button>
-      ) : null}
-
-      {/* Controls panel */}
+      {/* Controls panel — shown when visible, not kiosk, and panelOpen */}
       {visible && !kioskMode && panelOpen ? (
         <div
           style={{
             position: "absolute",
-            top: 14,
-            left: 14,
-            width: 300,
+            top: 66,
+            right: 14,
+            width: 360,
             zIndex: 15,
             padding: 14,
             borderRadius: 16,
-            background: "rgba(20, 12, 4, 0.72)",
+            background: "rgba(20, 12, 4, 0.76)",
             border: "1px solid rgba(255, 190, 80, 0.18)",
             backdropFilter: "blur(16px)",
             boxShadow: "0 0 28px rgba(0,0,0,0.32)",
-            maxHeight: "90vh",
+            maxHeight: "calc(100vh - 80px)",
             overflowY: "auto",
             color: "#ffe9b0",
           }}
@@ -264,14 +243,62 @@ export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, channel
             style={{
               fontSize: 13,
               fontWeight: 700,
-              marginBottom: 14,
+              marginBottom: 10,
               letterSpacing: "0.03em",
               textTransform: "uppercase",
+              opacity: 0.7,
             }}
           >
-            Voicemail Tuning
+            Voicemail
           </div>
 
+          {/* Presets — elevated to top */}
+          <PresetsPanel
+            channel={channel}
+            getControls={() => controlsRef.current as unknown as Record<string, number>}
+            onLoad={(data) => {
+              Object.assign(controlsRef.current, data);
+              forceRender((n) => n + 1);
+              onControlsChange?.(controlsRef.current);
+            }}
+          />
+
+          {/* Input Gain — per-channel */}
+          {onInputGainChange !== undefined ? (
+            <div style={{ marginTop: 14, marginBottom: 4 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  marginBottom: 6,
+                  letterSpacing: "0.05em",
+                  textTransform: "uppercase",
+                  opacity: 0.7,
+                }}
+              >
+                Audio Input
+              </div>
+              <Control
+                label="Input gain"
+                min={0.25}
+                max={20}
+                step={0.05}
+                value={inputGain ?? 1}
+                hue={c.hue}
+                onChange={(v) => onInputGainChange(v)}
+              />
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              height: 1,
+              background: "rgba(255, 190, 80, 0.12)",
+              margin: "10px 0 14px",
+            }}
+          />
+
+          {/* Visual controls */}
           <Control
             label="Hue"
             min={0}
@@ -346,15 +373,6 @@ export function OscilloscopeOverlay({ audioAnalyzer, visible, kioskMode, channel
             hue={c.hue}
             onChange={(v) => {
               controlsRef.current.glowOpacity = v;
-              forceRender((n) => n + 1);
-              onControlsChange?.(controlsRef.current);
-            }}
-          />
-          <PresetsPanel
-            channel={channel}
-            getControls={() => controlsRef.current as unknown as Record<string, number>}
-            onLoad={(data) => {
-              Object.assign(controlsRef.current, data);
               forceRender((n) => n + 1);
               onControlsChange?.(controlsRef.current);
             }}

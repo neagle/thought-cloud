@@ -17,11 +17,6 @@ export function ChannelSwitcher({ channel, onSetChannel }: Props) {
   return (
     <div
       style={{
-        position: "absolute",
-        bottom: 20,
-        left: "50%",
-        transform: "translateX(-50%)",
-        zIndex: 15,
         display: "flex",
         borderRadius: 999,
         overflow: "hidden",
@@ -38,7 +33,8 @@ export function ChannelSwitcher({ channel, onSetChannel }: Props) {
             type="button"
             onClick={() => onSetChannel(c)}
             style={{
-              padding: "0.5rem 1.1rem",
+              padding: "0.65rem 1.2rem",
+              minHeight: 44,
               border: "none",
               borderLeft: i > 0 ? "1px solid rgba(162,227,255,0.15)" : "none",
               background: active
